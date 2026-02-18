@@ -68,6 +68,9 @@ npm run build
 Par defaut, Strapi utilise SQLite avec le fichier `backoffice/.tmp/data.db`.
 Les variables d'environnement principales se trouvent dans `backoffice/config/database.ts`.
 
+## Permissions Strapi
+La configuration des roles est documentee dans `backoffice/docs/permissions.md`.
+
 ## Deploiement (homelab costamask.dev)
 Architecture cible : VM Debian 12 avec Docker, reverse proxy via Nginx Proxy Manager (NPM).
 - Les apps ne doivent pas exposer de ports publiquement. Seul NPM expose `80/443`.

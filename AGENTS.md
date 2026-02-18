@@ -29,6 +29,9 @@ npm run build
 Par defaut, Strapi utilise SQLite avec le fichier `backoffice/.tmp/data.db`.
 Variables d'environnement definies dans `backoffice/config/database.ts`.
 
+## Permissions
+Documentation : `backoffice/docs/permissions.md`.
+
 ## Arborescence
 - `src` : app Vue (SFC TypeScript)
 - `backoffice/src` : logique Strapi (content-types, api, etc.)
