@@ -29,7 +29,7 @@
     "series": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::series.series"
+      "target": "api::serie.serie"
     }
   }
 }
