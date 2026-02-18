@@ -2,7 +2,7 @@
   "kind": "collectionType",
   "collectionName": "series",
   "info": {
-    "singularName": "series",
+    "singularName": "serie",
     "pluralName": "series",
     "displayName": "Series",
     "description": ""
