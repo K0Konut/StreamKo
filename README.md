@@ -20,14 +20,15 @@ Site de streaming prive pour moi et mon entourage, avec un front Vue 3 + Vite et
 - Gestion des comptes utilisateurs
 
 ## Modele de donnees (proposition)
-- `User` : `username`, `password_hash`, `role`
-- `Movie` : `title`, `synopsis`, `genres`, `duration`, `releaseDate`, `poster`, `video`
-- `Series` : `title`, `synopsis`, `genres`, `poster`
-- `Season` : `number`, `series`
-- `Episode` : `number`, `title`, `synopsis`, `duration`, `series`, `season`, `video`
-- `Video` : `file`, `quality`, `language`, `subtitles`
-- `WatchProgress` : `user`, `itemType` (`movie`|`episode`), `item`, `positionSeconds`, `completed`
-- `WatchlistItem` : `user`, `itemType` (`movie`|`series`), `item`, `createdAt`
+- `User` (plugin users-permissions) : `username`, `password`, `role`
+- `Movie` : `title`, `slug`, `synopsis`, `genres`, `duration`, `releaseDate`, `poster`, `videoSources`
+- `Series` : `title`, `slug`, `synopsis`, `genres`, `poster`, `seasons`, `episodes`
+- `Season` : `number`, `series`, `episodes`
+- `Episode` : `number`, `title`, `synopsis`, `duration`, `series`, `season`, `videoSources`
+- `VideoSource` (component) : `file`, `quality`, `language`, `subtitles`
+- `SubtitleTrack` (component) : `language`, `file`
+- `WatchProgress` : `user`, `itemType` (`movie`|`episode`), `movie`, `episode`, `positionSeconds`, `completed`, `lastWatchedAt`
+- `WatchlistItem` : `user`, `itemType` (`movie`|`series`), `movie`, `series`
 
 ## Prerequis
 - Node.js `>=20` (requis par Strapi)

@@ -1,0 +1,27 @@
+{
+  "collectionName": "components_media_video_sources",
+  "info": {
+    "displayName": "Video Source",
+    "description": ""
+  },
+  "attributes": {
+    "file": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": ["videos"]
+    },
+    "quality": {
+      "type": "enumeration",
+      "enum": ["360p", "480p", "720p", "1080p", "4k"]
+    },
+    "language": {
+      "type": "string"
+    },
+    "subtitles": {
+      "type": "component",
+      "repeatable": true,
+      "component": "media.subtitle-track"
+    }
+  }
+}

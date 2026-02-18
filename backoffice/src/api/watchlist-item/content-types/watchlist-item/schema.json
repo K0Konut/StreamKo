@@ -1,0 +1,35 @@
+{
+  "kind": "collectionType",
+  "collectionName": "watchlist_items",
+  "info": {
+    "singularName": "watchlist-item",
+    "pluralName": "watchlist-items",
+    "displayName": "Watchlist Item",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "itemType": {
+      "type": "enumeration",
+      "enum": ["movie", "series"],
+      "required": true
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "movie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::movie.movie"
+    },
+    "series": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::series.series"
+    }
+  }
+}

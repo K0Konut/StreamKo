@@ -1,0 +1,47 @@
+{
+  "kind": "collectionType",
+  "collectionName": "movies",
+  "info": {
+    "singularName": "movie",
+    "pluralName": "movies",
+    "displayName": "Movie",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "slug": {
+      "type": "uid",
+      "targetField": "title"
+    },
+    "synopsis": {
+      "type": "text"
+    },
+    "genres": {
+      "type": "json"
+    },
+    "duration": {
+      "type": "integer",
+      "min": 0
+    },
+    "releaseDate": {
+      "type": "date"
+    },
+    "poster": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": ["images"]
+    },
+    "videoSources": {
+      "type": "component",
+      "repeatable": true,
+      "component": "media.video-source"
+    }
+  }
+}

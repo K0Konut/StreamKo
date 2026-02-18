@@ -1,0 +1,19 @@
+{
+  "collectionName": "components_media_subtitle_tracks",
+  "info": {
+    "displayName": "Subtitle Track",
+    "description": ""
+  },
+  "attributes": {
+    "language": {
+      "type": "string",
+      "required": true
+    },
+    "file": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": ["files"]
+    }
+  }
+}
