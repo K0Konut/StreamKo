@@ -15,8 +15,8 @@ Optionnel (si besoin) :
 Lecture catalogue :
 - `api::movie.movie.find`
 - `api::movie.movie.findOne`
-- `api::series.series.find`
-- `api::series.series.findOne`
+- `api::serie.serie.find`
+- `api::serie.serie.findOne`
 - `api::season.season.find`
 - `api::episode.episode.find`
 - `api::episode.episode.findOne`
@@ -37,8 +37,8 @@ Profil utilisateur :
 - `plugin::users-permissions.user.me`
 
 ## Notes importantes
-- Les actions `find`/`findOne` sur watchlist/progression doivent etre filtrees par utilisateur.
-- Strapi ne gere pas la regle "owner" automatiquement ici : on ajoutera une policy ou un controleur custom.
+- Les actions `find`/`findOne` sur watchlist/progression sont filtrees par utilisateur via controleur custom.
+- Les operations `create/update/delete` forcent `user` a l'utilisateur connecte (owner-only).
 
 ## Chemin dans l'admin
 `Settings` -> `Users & Permissions Plugin` -> `Roles` -> choisir le role -> cocher les permissions.
