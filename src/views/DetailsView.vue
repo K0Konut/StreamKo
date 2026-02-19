@@ -1,31 +1,68 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import {
+  fetchMovie,
+  fetchSerie,
+  fetchEpisodesBySeries,
+  resolveMediaUrl,
+  type Episode,
+  type Movie,
+  type Serie,
+} from '../lib/strapi'
 
 const route = useRoute()
-const isSeries = computed(() => route.params.type === 'serie')
+const type = computed(() => String(route.params.type || 'movie'))
+const isSeries = computed(() => type.value === 'serie')
+const item = ref<Movie | Serie | null>(null)
+const episodes = ref<Episode[]>([])
+const poster = ref<string | null>(null)
+const loading = ref(false)
+const error = ref('')
 
-const title = computed(() => (isSeries.value ? 'Night Meridian' : 'Silent Atlas'))
-const meta = computed(() => (isSeries.value ? 'S3 · 10 episodes' : 'Film · 2h 08'))
+const loadDetails = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    if (isSeries.value) {
+      const response = await fetchSerie(String(route.params.id))
+      item.value = response.data?.attributes || null
+      poster.value = resolveMediaUrl(item.value?.poster || null)
+      const episodesResponse = await fetchEpisodesBySeries(String(route.params.id))
+      episodes.value = episodesResponse.data.map((entry) => entry.attributes)
+    } else {
+      const response = await fetchMovie(String(route.params.id))
+      item.value = response.data?.attributes || null
+      poster.value = resolveMediaUrl(item.value?.poster || null)
+      episodes.value = []
+    }
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Erreur lors du chargement'
+  } finally {
+    loading.value = false
+  }
+}
 
-const episodes = [
-  { title: 'Episode 1 - Lueur', duration: '48 min' },
-  { title: 'Episode 2 - Ligne noire', duration: '46 min' },
-  { title: 'Episode 3 - Puits froid', duration: '50 min' },
-  { title: 'Episode 4 - Echo', duration: '43 min' },
-]
+onMounted(loadDetails)
+watch(() => route.params.id, loadDetails)
 </script>
 
 <template>
-  <section class="detail-hero">
+  <section v-if="error" class="section">
+    <div class="empty-state">
+      <strong>Impossible de charger la fiche</strong>
+      <span>{{ error }}</span>
+    </div>
+  </section>
+
+  <section class="detail-hero" v-if="item">
     <div class="detail-backdrop"></div>
     <div class="detail-content">
       <div class="eyebrow">Fiche</div>
-      <h1>{{ title }}</h1>
-      <p class="detail-meta">{{ meta }} · Thriller · 4K · VOSTFR</p>
+      <h1>{{ item.title }}</h1>
+      <p class="detail-meta">{{ isSeries ? 'Serie' : 'Film' }}</p>
       <p class="detail-desc">
-        Atmospheres denses, intrigues a tiroirs et une mise en scene precise. Tout est concu pour une
-        experience premium.
+        {{ item.synopsis || 'Aucune description pour le moment.' }}
       </p>
       <div class="hero-actions">
         <button class="cta">Lire</button>
@@ -33,7 +70,7 @@ const episodes = [
       </div>
     </div>
     <aside class="detail-card">
-      <div class="media-cover"></div>
+      <div class="media-cover" :style="poster ? { backgroundImage: `url(${poster})` } : {}"></div>
       <div class="detail-stats">
         <div>
           <span class="meta-label">Qualite</span>
@@ -47,53 +84,26 @@ const episodes = [
     </aside>
   </section>
 
-  <section class="section">
-    <div class="section-head">
-      <h2>Reprendre</h2>
-      <button class="ghost small">Reprendre l'episode</button>
-    </div>
-    <div class="continue-card detail-progress">
-      <div class="card-media"></div>
-      <div class="card-info">
-        <h3>Episode 4 - Echo</h3>
-        <span>Position 32:18</span>
-        <div class="progress">
-          <div class="progress-bar" style="width: 62%"></div>
-        </div>
-        <p>18 min restantes</p>
-      </div>
-    </div>
-  </section>
-
-  <section v-if="isSeries" class="section">
+  <section v-if="isSeries && episodes.length" class="section">
     <div class="section-head">
       <h2>Episodes</h2>
-      <button class="ghost small">Saison 3</button>
+      <button class="ghost small">Saison 1</button>
     </div>
     <div class="episode-list">
       <article v-for="episode in episodes" :key="episode.title" class="episode-row">
         <div>
           <h3>{{ episode.title }}</h3>
-          <span>{{ episode.duration }}</span>
+          <span>{{ episode.duration ? `${episode.duration} min` : '' }}</span>
         </div>
         <button class="ghost small">Lire</button>
       </article>
     </div>
   </section>
 
-  <section class="section">
-    <div class="section-head">
-      <h2>Recommandations</h2>
-      <button class="ghost small">Voir tout</button>
-    </div>
-    <div class="rail">
-      <article v-for="index in 5" :key="index" class="media-card">
-        <div class="media-cover"></div>
-        <div class="media-info">
-          <h3>Selection {{ index }}</h3>
-          <span>Thriller - 2024</span>
-        </div>
-      </article>
+  <section class="section" v-if="loading">
+    <div class="empty-state">
+      <strong>Chargement...</strong>
+      <span>Recuperation des details.</span>
     </div>
   </section>
 </template>

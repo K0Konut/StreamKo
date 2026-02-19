@@ -1,44 +1,109 @@
 <script setup lang="ts">
-const continueWatching = [
-  { title: 'Nocturne City', meta: 'S1 - E4', progress: 0.62, timeLeft: '18 min restantes' },
-  { title: 'Silent Atlas', meta: 'Film', progress: 0.34, timeLeft: '1h 02 restantes' },
-  { title: 'Aurora Divide', meta: 'S2 - E1', progress: 0.9, timeLeft: '4 min restantes' },
-]
+import { onMounted, ref } from 'vue'
+import {
+  fetchMovies,
+  fetchSeries,
+  fetchWatchProgress,
+  resolveMediaUrl,
+  type Movie,
+  type Serie,
+  type WatchProgress,
+} from '../lib/strapi'
 
-const rails = [
-  {
-    title: 'Tendances',
-    items: [
-      { title: 'Glass Harbor', tag: 'Thriller', year: '2024', badge: 'Nouveau' },
-      { title: 'Marelle', tag: 'Drame', year: '2022', badge: '4K' },
-      { title: 'Silverline', tag: 'Sci-Fi', year: '2023', badge: 'VF' },
-      { title: 'Opaline', tag: 'Romance', year: '2021', badge: 'VOSTFR' },
-      { title: 'Pulse Theory', tag: 'Action', year: '2024', badge: 'HDR' },
-    ],
-  },
-  {
-    title: 'Series a reprendre',
-    items: [
-      { title: 'Night Meridian', tag: 'Mystere', year: 'S3', badge: 'E08' },
-      { title: 'Blue Paradox', tag: 'Crime', year: 'S1', badge: 'E02' },
-      { title: 'Kite District', tag: 'Drama', year: 'S2', badge: 'E05' },
-      { title: 'Atlas Code', tag: 'Tech', year: 'S1', badge: 'E09' },
-      { title: 'Brass Room', tag: 'Indie', year: 'S4', badge: 'E01' },
-    ],
-  },
-  {
-    title: 'Ajoutes recemment',
-    items: [
-      { title: 'Lumen 12', tag: 'SF', year: '2024', badge: 'HDR' },
-      { title: 'Cold Frame', tag: 'Thriller', year: '2023', badge: '4K' },
-      { title: 'Velvet Run', tag: 'Action', year: '2022', badge: 'VF' },
-      { title: 'Paper Sky', tag: 'Aventure', year: '2021', badge: 'VOSTFR' },
-      { title: 'Echelon', tag: 'Spy', year: '2024', badge: 'Nouveau' },
-    ],
-  },
-]
+const loading = ref(true)
+const error = ref('')
+const continueWatching = ref<
+  Array<{ title: string; meta: string; progress: number; timeLeft: string; poster?: string }>
+>([])
+const rails = ref<
+  Array<{ title: string; items: Array<{ title: string; tag: string; year: string; badge: string }> }>
+>([])
 
 const filters = ['Tout', 'Films', 'Series', 'Anime', 'Documentaires', '4K', 'VOSTFR']
+
+const formatTimeLeft = (seconds?: number, duration?: number) => {
+  if (!seconds || !duration) return 'En cours'
+  const remaining = Math.max(duration * 60 - seconds, 0)
+  const hours = Math.floor(remaining / 3600)
+  const minutes = Math.floor((remaining % 3600) / 60)
+  if (hours > 0) return `${hours}h ${minutes.toString().padStart(2, '0')} restantes`
+  return `${minutes} min restantes`
+}
+
+const toRailItem = (item: Movie | Serie, badge: string, tagFallback: string) => ({
+  title: item.title,
+  tag: Array.isArray(item.genres) && item.genres.length ? String(item.genres[0]) : tagFallback,
+  year: item.releaseDate ? item.releaseDate.slice(0, 4) : '2024',
+  badge,
+})
+
+const mapProgress = (progress: WatchProgress) => {
+  if (progress.itemType === 'movie' && progress.movie?.data) {
+    const movie = progress.movie.data.attributes
+    return {
+      title: movie.title,
+      meta: 'Film',
+      progress: movie.duration ? (progress.positionSeconds || 0) / (movie.duration * 60) : 0,
+      timeLeft: formatTimeLeft(progress.positionSeconds, movie.duration),
+      poster: resolveMediaUrl(movie.poster),
+    }
+  }
+
+  if (progress.itemType === 'episode' && progress.episode?.data) {
+    const episode = progress.episode.data.attributes
+    const serie = episode.series?.data?.attributes
+    const metaLabel = serie ? serie.title : 'Episode'
+    return {
+      title: episode.title,
+      meta: metaLabel,
+      progress: episode.duration ? (progress.positionSeconds || 0) / (episode.duration * 60) : 0,
+      timeLeft: formatTimeLeft(progress.positionSeconds, episode.duration),
+      poster: resolveMediaUrl(serie?.poster),
+    }
+  }
+
+  return null
+}
+
+const loadHome = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    const [moviesResponse, seriesResponse, progressResponse] = await Promise.all([
+      fetchMovies(),
+      fetchSeries(),
+      fetchWatchProgress(),
+    ])
+
+    const movies = moviesResponse.data.map((item) => item.attributes)
+    const series = seriesResponse.data.map((item) => item.attributes)
+
+    rails.value = [
+      {
+        title: 'Tendances',
+        items: movies.slice(0, 5).map((movie) => toRailItem(movie, 'Nouveau', 'Thriller')),
+      },
+      {
+        title: 'Series a reprendre',
+        items: series.slice(0, 5).map((serie) => toRailItem(serie, 'E01', 'Mystere')),
+      },
+      {
+        title: 'Ajoutes recemment',
+        items: movies.slice(5, 10).map((movie) => toRailItem(movie, '4K', 'Drame')),
+      },
+    ]
+
+    continueWatching.value = progressResponse.data
+      .map((item) => mapProgress(item.attributes))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Erreur lors du chargement'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadHome)
 </script>
 
 <template>
@@ -74,17 +139,17 @@ const filters = ['Tout', 'Films', 'Series', 'Anime', 'Documentaires', '4K', 'VOS
         <span class="pill">Continue watching</span>
         <span class="time">Maintenant</span>
       </div>
-      <h3>Silent Atlas</h3>
-      <p>Film - 2h 08 - 4K</p>
+      <h3>{{ continueWatching[0]?.title || 'Aucune reprise' }}</h3>
+      <p>{{ continueWatching[0]?.meta || 'Film - Serie' }}</p>
       <div class="progress">
-        <div class="progress-bar" style="width: 34%"></div>
+        <div class="progress-bar" :style="{ width: `${(continueWatching[0]?.progress || 0) * 100}%` }"></div>
       </div>
       <div class="card-actions">
         <button class="cta small">Reprendre</button>
         <button class="ghost small">Details</button>
       </div>
       <div class="card-foot">
-        <span>1h 02 restantes</span>
+        <span>{{ continueWatching[0]?.timeLeft || 'En attente' }}</span>
         <span>Derniere lecture: hier</span>
       </div>
     </div>
@@ -108,6 +173,13 @@ const filters = ['Tout', 'Films', 'Series', 'Anime', 'Documentaires', '4K', 'VOS
     </div>
   </section>
 
+  <section v-if="error" class="section">
+    <div class="empty-state">
+      <strong>Impossible de charger les donnees</strong>
+      <span>{{ error }}</span>
+    </div>
+  </section>
+
   <section class="section" style="--delay: 0.1s">
     <div class="section-head">
       <h2>Reprendre</h2>
@@ -115,7 +187,7 @@ const filters = ['Tout', 'Films', 'Series', 'Anime', 'Documentaires', '4K', 'VOS
     </div>
     <div class="continue-grid">
       <article v-for="item in continueWatching" :key="item.title" class="continue-card">
-        <div class="card-media"></div>
+        <div class="card-media" :style="item.poster ? { backgroundImage: `url(${item.poster})` } : {}"></div>
         <div class="card-info">
           <h3>{{ item.title }}</h3>
           <span>{{ item.meta }}</span>
@@ -125,6 +197,10 @@ const filters = ['Tout', 'Films', 'Series', 'Anime', 'Documentaires', '4K', 'VOS
           <p>{{ item.timeLeft }}</p>
         </div>
       </article>
+    </div>
+    <div v-if="!loading && !continueWatching.length" class="empty-state">
+      <strong>Aucune reprise pour l'instant</strong>
+      <span>Commence un film ou une serie pour activer la reprise.</span>
     </div>
   </section>
 

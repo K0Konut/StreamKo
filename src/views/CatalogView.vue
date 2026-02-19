@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { fetchMovies, fetchSeries, resolveMediaUrl, type Movie, type Serie } from '../lib/strapi'
 
 const route = useRoute()
 const isSeries = computed(() => route.name === 'series')
@@ -10,31 +11,60 @@ const subtitle = computed(() =>
   isSeries.value ? 'Saisons, episodes, reprises' : 'Longs metrages en qualite premium'
 )
 
-const items = computed(() =>
-  isSeries.value
-    ? [
-        { title: 'Night Meridian', meta: 'S3', badge: 'E08' },
-        { title: 'Blue Paradox', meta: 'S1', badge: 'E02' },
-        { title: 'Kite District', meta: 'S2', badge: 'E05' },
-        { title: 'Atlas Code', meta: 'S1', badge: 'E09' },
-        { title: 'Brass Room', meta: 'S4', badge: 'E01' },
-        { title: 'Crimson Vale', meta: 'S2', badge: 'E07' },
-        { title: 'Paper Lantern', meta: 'S1', badge: 'E03' },
-        { title: 'Nocturne City', meta: 'S1', badge: 'E04' },
-      ]
-    : [
-        { title: 'Silent Atlas', meta: '2h 08', badge: '4K' },
-        { title: 'Glass Harbor', meta: '1h 42', badge: 'Nouveau' },
-        { title: 'Velvet Run', meta: '2h 01', badge: 'VF' },
-        { title: 'Opaline', meta: '1h 58', badge: 'VOSTFR' },
-        { title: 'Pulse Theory', meta: '2h 12', badge: 'HDR' },
-        { title: 'Cold Frame', meta: '1h 39', badge: '4K' },
-        { title: 'Silverline', meta: '2h 04', badge: 'VF' },
-        { title: 'Marelle', meta: '1h 46', badge: 'Nouveau' },
-      ]
-)
-
 const filters = ['Tout', 'Action', 'Thriller', 'SF', 'Drame', '4K', 'VOSTFR']
+
+const query = ref('')
+const items = ref<
+  Array<{
+    id: number
+    title: string
+    meta: string
+    badge: string
+    poster?: string
+    detailType: 'movie' | 'serie'
+  }>
+>([])
+const loading = ref(false)
+const error = ref('')
+let debounceId: number | undefined
+
+const loadCatalog = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    const response = isSeries.value ? await fetchSeries(query.value) : await fetchMovies(query.value)
+    const mapped = response.data.map((entry) => {
+      const item = entry.attributes as Movie | Serie
+      return {
+        id: entry.id,
+        title: item.title,
+        meta: isSeries.value
+          ? 'Serie'
+          : item.releaseDate
+            ? item.releaseDate.slice(0, 4)
+            : 'Film',
+        badge: isSeries.value ? 'E01' : '4K',
+        poster: resolveMediaUrl(item.poster),
+        detailType: isSeries.value ? 'serie' : 'movie',
+      }
+    })
+    items.value = mapped
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Erreur lors du chargement'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadCatalog)
+
+watch(
+  () => [query.value, isSeries.value],
+  () => {
+    window.clearTimeout(debounceId)
+    debounceId = window.setTimeout(loadCatalog, 300)
+  }
+)
 </script>
 
 <template>
@@ -58,7 +88,7 @@ const filters = ['Tout', 'Action', 'Thriller', 'SF', 'Drame', '4K', 'VOSTFR']
           fill="currentColor"
         />
       </svg>
-      <input type="text" placeholder="Rechercher dans le catalogue..." />
+      <input v-model="query" type="text" placeholder="Rechercher dans le catalogue..." />
       <button class="ghost small">Filtres</button>
     </div>
     <div class="filter-row">
@@ -68,9 +98,19 @@ const filters = ['Tout', 'Action', 'Thriller', 'SF', 'Drame', '4K', 'VOSTFR']
     </div>
   </section>
 
+  <section v-if="error" class="section">
+    <div class="empty-state">
+      <strong>Impossible de charger le catalogue</strong>
+      <span>{{ error }}</span>
+    </div>
+  </section>
+
   <section class="catalog-grid">
     <article v-for="item in items" :key="item.title" class="media-card">
-      <div class="media-cover">
+      <div
+        class="media-cover"
+        :style="item.poster ? { backgroundImage: `url(${item.poster})` } : {}"
+      >
         <span class="badge">{{ item.badge }}</span>
       </div>
       <div class="media-info">
@@ -78,9 +118,18 @@ const filters = ['Tout', 'Action', 'Thriller', 'SF', 'Drame', '4K', 'VOSTFR']
         <span>{{ item.meta }}</span>
       </div>
       <div class="card-actions">
-        <button class="cta small">Ouvrir</button>
+        <RouterLink
+          class="cta small"
+          :to="{ name: 'details', params: { type: item.detailType, id: item.id } }"
+        >
+          Ouvrir
+        </RouterLink>
         <button class="ghost small">Ajouter</button>
       </div>
     </article>
+    <div v-if="!loading && !items.length" class="empty-state">
+      <strong>Aucun resultat</strong>
+      <span>Essaie un autre filtre ou ajoute un titre dans le backoffice.</span>
+    </div>
   </section>
 </template>

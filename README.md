@@ -67,6 +67,7 @@ npm run build
 ## Configuration
 Par defaut, Strapi utilise SQLite avec le fichier `backoffice/.tmp/data.db`.
 Les variables d'environnement principales se trouvent dans `backoffice/config/database.ts`.
+Frontend (Vite) : definir `VITE_STRAPI_URL` pour pointer vers l'API Strapi.
 
 ## Permissions Strapi
 La configuration des roles est documentee dans `backoffice/docs/permissions.md`.

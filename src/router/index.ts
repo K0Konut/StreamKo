@@ -2,6 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   {
+    path: '/login',
+    name: 'login',
+    component: () => import('../views/LoginView.vue'),
+    meta: { layout: 'auth' },
+  },
+  {
     path: '/',
     name: 'home',
     component: () => import('../views/HomeView.vue'),
@@ -39,6 +45,17 @@ const router = createRouter({
   scrollBehavior() {
     return { top: 0 }
   },
+})
+
+router.beforeEach((to) => {
+  const token = localStorage.getItem('sk_token')
+  if (!token && to.name !== 'login') {
+    return { name: 'login' }
+  }
+  if (token && to.name === 'login') {
+    return { name: 'home' }
+  }
+  return true
 })
 
 export default router

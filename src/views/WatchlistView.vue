@@ -1,12 +1,61 @@
 <script setup lang="ts">
-const items = [
-  { title: 'Silent Atlas', meta: 'Film · 4K' },
-  { title: 'Night Meridian', meta: 'S3 · E08' },
-  { title: 'Glass Harbor', meta: 'Film · Nouveau' },
-  { title: 'Kite District', meta: 'S2 · E05' },
-  { title: 'Opaline', meta: 'Film · VOSTFR' },
-  { title: 'Pulse Theory', meta: 'Film · HDR' },
-]
+import { onMounted, ref } from 'vue'
+import { fetchWatchlist, resolveMediaUrl, type WatchlistItem } from '../lib/strapi'
+
+const items = ref<
+  Array<{
+    id: number
+    title: string
+    meta: string
+    badge: string
+    poster?: string
+    detailType: 'movie' | 'serie'
+  }>
+>([])
+const loading = ref(false)
+const error = ref('')
+
+const loadWatchlist = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    const response = await fetchWatchlist()
+    items.value = response.data
+      .map((entry) => entry.attributes as WatchlistItem)
+      .map((entry) => {
+        if (entry.itemType === 'movie' && entry.movie?.data) {
+          const movie = entry.movie.data.attributes
+          return {
+            id: entry.movie.data.id,
+            title: movie.title,
+            meta: 'Film',
+            badge: 'LISTE',
+            poster: resolveMediaUrl(movie.poster),
+            detailType: 'movie',
+          }
+        }
+        if (entry.itemType === 'series' && entry.series?.data) {
+          const serie = entry.series.data.attributes
+          return {
+            id: entry.series.data.id,
+            title: serie.title,
+            meta: 'Serie',
+            badge: 'LISTE',
+            poster: resolveMediaUrl(serie.poster),
+            detailType: 'serie',
+          }
+        }
+        return null
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Erreur lors du chargement'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadWatchlist)
 </script>
 
 <template>
@@ -22,19 +71,38 @@ const items = [
     </div>
   </section>
 
+  <section v-if="error" class="section">
+    <div class="empty-state">
+      <strong>Impossible de charger la liste</strong>
+      <span>{{ error }}</span>
+    </div>
+  </section>
+
   <section class="catalog-grid">
     <article v-for="item in items" :key="item.title" class="media-card">
-      <div class="media-cover">
-        <span class="badge">LISTE</span>
+      <div
+        class="media-cover"
+        :style="item.poster ? { backgroundImage: `url(${item.poster})` } : {}"
+      >
+        <span class="badge">{{ item.badge }}</span>
       </div>
       <div class="media-info">
         <h3>{{ item.title }}</h3>
         <span>{{ item.meta }}</span>
       </div>
       <div class="card-actions">
-        <button class="cta small">Lire</button>
+        <RouterLink
+          class="cta small"
+          :to="{ name: 'details', params: { type: item.detailType, id: item.id } }"
+        >
+          Ouvrir
+        </RouterLink>
         <button class="ghost small">Retirer</button>
       </div>
     </article>
+    <div v-if="!loading && !items.length" class="empty-state">
+      <strong>Liste vide</strong>
+      <span>Ajoute un film ou une serie depuis le catalogue.</span>
+    </div>
   </section>
 </template>

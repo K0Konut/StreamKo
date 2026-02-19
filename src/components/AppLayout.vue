@@ -1,4 +1,24 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const user = computed(() => {
+  const raw = localStorage.getItem('sk_user')
+  return raw ? JSON.parse(raw) : null
+})
+
+const initials = computed(() => {
+  if (!user.value?.username) return '??'
+  return user.value.username.slice(0, 2).toUpperCase()
+})
+
+const logout = () => {
+  localStorage.removeItem('sk_token')
+  localStorage.removeItem('sk_user')
+  router.push('/login')
+}
+</script>
 
 <template>
   <header class="topbar">
@@ -19,9 +39,9 @@
 
     <div class="top-actions">
       <button class="ghost">Notifications</button>
-      <div class="user-pill">
+      <div class="user-pill" @click="logout" title="Se deconnecter">
         <span class="user-dot"></span>
-        <span>KC</span>
+        <span>{{ initials }}</span>
       </div>
     </div>
   </header>
