@@ -45,7 +45,9 @@ const apiFetch = async <T>(path: string, options: RequestInit = {}) => {
   return (await response.json()) as T
 }
 
-export type StrapiEntity<T> = { id: number; attributes: T } | (T & { id: number })
+export type StrapiEntity<T> =
+  | { id: number; documentId?: string; attributes: T }
+  | (T & { id: number; documentId?: string })
 
 export type StrapiCollection<T> = {
   data: Array<StrapiEntity<T>>
@@ -133,10 +135,29 @@ export const unwrapSingle = <T>(payload: StrapiSingle<T>) => {
 
 export const unwrapId = <T>(entry: StrapiEntity<T>) => (entry as { id: number }).id
 
+export const unwrapDocumentId = <T>(entry: StrapiEntity<T>) =>
+  (entry as { documentId?: string }).documentId
+
 export const unwrapRelation = <T>(relation?: { data: StrapiEntity<T> | null } | null) => {
   const data = relation?.data
   if (!data) return null
   return unwrapEntity<T>(data)
+}
+
+const isNumericId = (value: string) => /^\d+$/.test(value)
+
+const fetchById = <T>(base: string, id: string, populate?: string) => {
+  const filters = isNumericId(id)
+    ? { 'filters[id][$eq]': id }
+    : { 'filters[documentId][$eq]': id }
+
+  const query = toQuery({
+    ...filters,
+    ...(populate || {}),
+    'pagination[pageSize]': 1,
+  })
+
+  return apiFetch<StrapiCollection<T>>(`${base}${query}`)
 }
 
 export const login = async (identifier: string, password: string) => {
@@ -169,22 +190,34 @@ export const fetchSeries = (search?: string) => {
   return apiFetch<StrapiCollection<Serie>>(`/api/series${query}`)
 }
 
-export const fetchMovie = (id: string) =>
-  apiFetch<StrapiSingle<Movie>>(
-    `/api/movies/${id}${toQuery({ 'populate[poster]': 'true', 'populate[videoSources]': 'true' })}`
-  )
+export const fetchMovie = async (id: string) => {
+  const response = await fetchById<Movie>('/api/movies', id, {
+    'populate[poster]': 'true',
+    'populate[videoSources]': 'true',
+  })
+  return response.data.length ? response.data[0] : null
+}
 
-export const fetchSerie = (id: string) =>
-  apiFetch<StrapiSingle<Serie>>(`/api/series/${id}${toQuery({ 'populate[poster]': 'true' })}`)
+export const fetchSerie = async (id: string) => {
+  const response = await fetchById<Serie>('/api/series', id, {
+    'populate[poster]': 'true',
+  })
+  return response.data.length ? response.data[0] : null
+}
 
-export const fetchEpisodesBySeries = (seriesId: string) =>
-  apiFetch<StrapiCollection<Episode>>(
+export const fetchEpisodesBySeries = (seriesId: string) => {
+  const filters = isNumericId(seriesId)
+    ? { 'filters[series][id][$eq]': seriesId }
+    : { 'filters[series][documentId][$eq]': seriesId }
+
+  return apiFetch<StrapiCollection<Episode>>(
     `/api/episodes${toQuery({
-      'filters[series][id][$eq]': seriesId,
+      ...filters,
       'pagination[pageSize]': 50,
       sort: 'number:asc',
     })}`
   )
+}
 
 export const fetchWatchProgress = () =>
   apiFetch<StrapiCollection<WatchProgress>>(

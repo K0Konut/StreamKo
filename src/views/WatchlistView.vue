@@ -12,7 +12,7 @@ import {
 
 const items = ref<
   Array<{
-    id: number
+    id: string
     title: string
     meta: string
     badge: string
@@ -35,7 +35,7 @@ const loadWatchlist = async () => {
           const movie = unwrapRelation<Movie>(entry.movie)
           if (!movie || !entry.movie?.data) return null
           return {
-            id: entry.movie.data.id,
+            id: String(entry.movie.data.documentId ?? entry.movie.data.id),
             title: movie.title,
             meta: 'Film',
             badge: 'LISTE',
@@ -47,7 +47,7 @@ const loadWatchlist = async () => {
           const serie = unwrapRelation<Serie>(entry.series)
           if (!serie || !entry.series?.data) return null
           return {
-            id: entry.series.data.id,
+            id: String(entry.series.data.documentId ?? entry.series.data.id),
             title: serie.title,
             meta: 'Serie',
             badge: 'LISTE',

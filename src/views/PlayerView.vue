@@ -5,7 +5,7 @@ import {
   fetchMovie,
   fetchSerie,
   resolveMediaUrl,
-  unwrapSingle,
+  unwrapEntity,
   type Movie,
   type Serie,
 } from '../lib/strapi'
@@ -22,13 +22,13 @@ const loadPlayer = async () => {
   try {
     if (isSeries.value) {
       const response = await fetchSerie(String(route.params.id))
-      const serie = unwrapSingle<Serie>(response) || undefined
+      const serie = response ? unwrapEntity<Serie>(response) : undefined
       title.value = serie?.title || 'Serie'
       subtitle.value = 'Episode en cours'
       poster.value = resolveMediaUrl(serie?.poster || null)
     } else {
       const response = await fetchMovie(String(route.params.id))
-      const movie = unwrapSingle<Movie>(response) || undefined
+      const movie = response ? unwrapEntity<Movie>(response) : undefined
       title.value = movie?.title || 'Film'
       subtitle.value = movie?.duration ? `${movie.duration} min` : 'Lecture'
       poster.value = resolveMediaUrl(movie?.poster || null)

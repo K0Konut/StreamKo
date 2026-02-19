@@ -5,6 +5,7 @@ import {
   fetchMovies,
   fetchSeries,
   resolveMediaUrl,
+  unwrapDocumentId,
   unwrapEntity,
   unwrapId,
   type Movie,
@@ -24,7 +25,7 @@ const filters = ['Tout', 'Action', 'Thriller', 'SF', 'Drame', '4K', 'VOSTFR']
 const query = ref('')
 const items = ref<
   Array<{
-    id: number
+    id: string
     title: string
     meta: string
     badge: string
@@ -44,7 +45,7 @@ const loadCatalog = async () => {
     const mapped = response.data.map((entry) => {
       const item = unwrapEntity<Movie | Serie>(entry)
       return {
-        id: unwrapId(entry),
+        id: unwrapDocumentId(entry) ?? String(unwrapId(entry)),
         title: item.title,
         meta: isSeries.value
           ? 'Serie'

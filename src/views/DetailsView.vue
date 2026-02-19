@@ -7,7 +7,6 @@ import {
   fetchEpisodesBySeries,
   resolveMediaUrl,
   unwrapEntity,
-  unwrapSingle,
   type Episode,
   type Movie,
   type Serie,
@@ -28,13 +27,13 @@ const loadDetails = async () => {
   try {
     if (isSeries.value) {
       const response = await fetchSerie(String(route.params.id))
-      item.value = unwrapSingle<Serie>(response)
+      item.value = response ? unwrapEntity<Serie>(response) : null
       poster.value = resolveMediaUrl(item.value?.poster || null)
       const episodesResponse = await fetchEpisodesBySeries(String(route.params.id))
       episodes.value = episodesResponse.data.map((entry) => unwrapEntity<Episode>(entry))
     } else {
       const response = await fetchMovie(String(route.params.id))
-      item.value = unwrapSingle<Movie>(response)
+      item.value = response ? unwrapEntity<Movie>(response) : null
       poster.value = resolveMediaUrl(item.value?.poster || null)
       episodes.value = []
     }
