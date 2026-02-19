@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { fetchMovie, fetchSerie, resolveMediaUrl, type Movie, type Serie } from '../lib/strapi'
+import {
+  fetchMovie,
+  fetchSerie,
+  resolveMediaUrl,
+  unwrapSingle,
+  type Movie,
+  type Serie,
+} from '../lib/strapi'
 
 const route = useRoute()
 const isSeries = computed(() => route.query.type === 'serie')
@@ -15,13 +22,13 @@ const loadPlayer = async () => {
   try {
     if (isSeries.value) {
       const response = await fetchSerie(String(route.params.id))
-      const serie = response.data?.attributes as Serie | undefined
+      const serie = unwrapSingle<Serie>(response) || undefined
       title.value = serie?.title || 'Serie'
       subtitle.value = 'Episode en cours'
       poster.value = resolveMediaUrl(serie?.poster || null)
     } else {
       const response = await fetchMovie(String(route.params.id))
-      const movie = response.data?.attributes as Movie | undefined
+      const movie = unwrapSingle<Movie>(response) || undefined
       title.value = movie?.title || 'Film'
       subtitle.value = movie?.duration ? `${movie.duration} min` : 'Lecture'
       poster.value = resolveMediaUrl(movie?.poster || null)

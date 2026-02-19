@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { fetchMovies, fetchSeries, resolveMediaUrl, type Movie, type Serie } from '../lib/strapi'
+import {
+  fetchMovies,
+  fetchSeries,
+  resolveMediaUrl,
+  unwrapEntity,
+  unwrapId,
+  type Movie,
+  type Serie,
+} from '../lib/strapi'
 
 const route = useRoute()
 const isSeries = computed(() => route.name === 'series')
@@ -34,9 +42,9 @@ const loadCatalog = async () => {
   try {
     const response = isSeries.value ? await fetchSeries(query.value) : await fetchMovies(query.value)
     const mapped = response.data.map((entry) => {
-      const item = entry.attributes as Movie | Serie
+      const item = unwrapEntity<Movie | Serie>(entry)
       return {
-        id: entry.id,
+        id: unwrapId(entry),
         title: item.title,
         meta: isSeries.value
           ? 'Serie'

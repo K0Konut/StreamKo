@@ -45,13 +45,15 @@ const apiFetch = async <T>(path: string, options: RequestInit = {}) => {
   return (await response.json()) as T
 }
 
+export type StrapiEntity<T> = { id: number; attributes: T } | (T & { id: number })
+
 export type StrapiCollection<T> = {
-  data: Array<{ id: number; attributes: T }>
+  data: Array<StrapiEntity<T>>
   meta: { pagination: { page: number; pageSize: number; pageCount: number; total: number } }
 }
 
 export type StrapiSingle<T> = {
-  data: { id: number; attributes: T } | null
+  data: StrapiEntity<T> | null
 }
 
 export type MediaFile = {
@@ -118,6 +120,23 @@ export const resolveMediaUrl = (media?: MediaRelation | null) => {
   if (!url) return null
   if (url.startsWith('http')) return url
   return `${getBaseUrl()}${url}`
+}
+
+export const unwrapEntity = <T>(entry: StrapiEntity<T>) =>
+  'attributes' in entry ? entry.attributes : entry
+
+export const unwrapSingle = <T>(payload: StrapiSingle<T>) => {
+  const data = payload.data
+  if (!data) return null
+  return unwrapEntity<T>(data)
+}
+
+export const unwrapId = <T>(entry: StrapiEntity<T>) => (entry as { id: number }).id
+
+export const unwrapRelation = <T>(relation?: { data: StrapiEntity<T> | null } | null) => {
+  const data = relation?.data
+  if (!data) return null
+  return unwrapEntity<T>(data)
 }
 
 export const login = async (identifier: string, password: string) => {

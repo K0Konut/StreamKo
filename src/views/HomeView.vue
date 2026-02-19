@@ -5,6 +5,8 @@ import {
   fetchSeries,
   fetchWatchProgress,
   resolveMediaUrl,
+  unwrapEntity,
+  unwrapRelation,
   type Movie,
   type Serie,
   type WatchProgress,
@@ -38,8 +40,9 @@ const toRailItem = (item: Movie | Serie, badge: string, tagFallback: string) => 
 })
 
 const mapProgress = (progress: WatchProgress) => {
-  if (progress.itemType === 'movie' && progress.movie?.data) {
-    const movie = progress.movie.data.attributes
+  if (progress.itemType === 'movie') {
+    const movie = unwrapRelation<Movie>(progress.movie)
+    if (!movie) return null
     return {
       title: movie.title,
       meta: 'Film',
@@ -49,9 +52,10 @@ const mapProgress = (progress: WatchProgress) => {
     }
   }
 
-  if (progress.itemType === 'episode' && progress.episode?.data) {
-    const episode = progress.episode.data.attributes
-    const serie = episode.series?.data?.attributes
+  if (progress.itemType === 'episode') {
+    const episode = unwrapRelation<Episode>(progress.episode)
+    if (!episode) return null
+    const serie = unwrapRelation<Serie>(episode.series)
     const metaLabel = serie ? serie.title : 'Episode'
     return {
       title: episode.title,
@@ -75,8 +79,8 @@ const loadHome = async () => {
       fetchWatchProgress(),
     ])
 
-    const movies = moviesResponse.data.map((item) => item.attributes)
-    const series = seriesResponse.data.map((item) => item.attributes)
+    const movies = moviesResponse.data.map((item) => unwrapEntity<Movie>(item))
+    const series = seriesResponse.data.map((item) => unwrapEntity<Serie>(item))
 
     rails.value = [
       {
@@ -94,7 +98,7 @@ const loadHome = async () => {
     ]
 
     continueWatching.value = progressResponse.data
-      .map((item) => mapProgress(item.attributes))
+      .map((item) => mapProgress(unwrapEntity<WatchProgress>(item)))
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Erreur lors du chargement'

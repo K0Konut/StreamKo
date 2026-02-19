@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { fetchWatchlist, resolveMediaUrl, type WatchlistItem } from '../lib/strapi'
+import {
+  fetchWatchlist,
+  resolveMediaUrl,
+  unwrapEntity,
+  unwrapRelation,
+  type WatchlistItem,
+  type Movie,
+  type Serie,
+} from '../lib/strapi'
 
 const items = ref<
   Array<{
@@ -21,10 +29,11 @@ const loadWatchlist = async () => {
   try {
     const response = await fetchWatchlist()
     items.value = response.data
-      .map((entry) => entry.attributes as WatchlistItem)
+      .map((entry) => unwrapEntity<WatchlistItem>(entry))
       .map((entry) => {
-        if (entry.itemType === 'movie' && entry.movie?.data) {
-          const movie = entry.movie.data.attributes
+        if (entry.itemType === 'movie') {
+          const movie = unwrapRelation<Movie>(entry.movie)
+          if (!movie || !entry.movie?.data) return null
           return {
             id: entry.movie.data.id,
             title: movie.title,
@@ -34,8 +43,9 @@ const loadWatchlist = async () => {
             detailType: 'movie',
           }
         }
-        if (entry.itemType === 'series' && entry.series?.data) {
-          const serie = entry.series.data.attributes
+        if (entry.itemType === 'series') {
+          const serie = unwrapRelation<Serie>(entry.series)
+          if (!serie || !entry.series?.data) return null
           return {
             id: entry.series.data.id,
             title: serie.title,
