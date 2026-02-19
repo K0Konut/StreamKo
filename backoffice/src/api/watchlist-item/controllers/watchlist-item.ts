@@ -37,10 +37,15 @@ export default factories.createCoreController('api::watchlist-item.watchlist-ite
       return ctx.unauthorized();
     }
 
+    const existingFilters =
+      typeof ctx.query?.filters === 'object' && ctx.query?.filters !== null
+        ? ctx.query.filters
+        : {};
+
     ctx.query = {
       ...ctx.query,
       filters: {
-        ...(ctx.query?.filters || {}),
+        ...existingFilters,
         user: user.id,
       },
     };
