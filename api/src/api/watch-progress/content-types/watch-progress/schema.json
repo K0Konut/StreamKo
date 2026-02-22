@@ -1,0 +1,53 @@
+{
+  "kind": "collectionType",
+  "collectionName": "watch_progresses",
+  "info": {
+    "singularName": "watch-progress",
+    "pluralName": "watch-progresses",
+    "displayName": "Watch Progress"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "kind": {
+      "type": "enumeration",
+      "enum": [
+        "movie",
+        "episode"
+      ],
+      "required": true
+    },
+    "movie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::movie.movie"
+    },
+    "episode": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::episode.episode"
+    },
+    "positionSeconds": {
+      "type": "integer",
+      "required": true,
+      "default": 0,
+      "min": 0
+    },
+    "durationSeconds": {
+      "type": "integer",
+      "min": 0
+    },
+    "completed": {
+      "type": "boolean",
+      "required": true,
+      "default": false
+    }
+  }
+}
