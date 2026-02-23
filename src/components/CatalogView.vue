@@ -5,8 +5,12 @@ import { findAuthToken } from '../lib/authToken'
 import { StrapiRequestError } from '../lib/strapiClient'
 import { streamyApi } from '../lib/streamyApi'
 
-type CatalogMovie = {
+type CatalogKind = 'movie' | 'series'
+
+type CatalogItem = {
   id: string
+  kind: CatalogKind
+  kindLabel: 'Movie' | 'Series'
   title: string
   year: number | null
   genres: string[]
@@ -15,15 +19,16 @@ type CatalogMovie = {
 }
 
 const emit = defineEmits<{
-  openMovie: [movieId: string]
+  openMedia: [target: { kind: CatalogKind; id: string }]
 }>()
 
 const loadingCatalog = ref(false)
 const catalogError = ref('')
 const activeToken = ref<string | null>(null)
-const movies = ref<CatalogMovie[]>([])
+const items = ref<CatalogItem[]>([])
 
 const searchQuery = ref('')
+const selectedType = ref<'all' | CatalogKind>('all')
 const selectedGenre = ref('all')
 const yearFrom = ref('')
 const yearTo = ref('')
@@ -67,8 +72,8 @@ const catalogStatus = computed(() => {
 const genreOptions = computed(() => {
   const counts = new Map<string, number>()
 
-  movies.value.forEach((movie) => {
-    movie.genres.forEach((genre) => {
+  items.value.forEach((item) => {
+    item.genres.forEach((genre) => {
       counts.set(genre, (counts.get(genre) ?? 0) + 1)
     })
   })
@@ -78,23 +83,27 @@ const genreOptions = computed(() => {
     .map(([genre]) => genre)
 })
 
-const filteredMovies = computed(() => {
+const filteredItems = computed(() => {
   const titleQuery = searchQuery.value.trim().toLowerCase()
 
-  const filtered = movies.value.filter((movie) => {
-    if (titleQuery && !movie.title.toLowerCase().includes(titleQuery)) {
+  const filtered = items.value.filter((item) => {
+    if (selectedType.value !== 'all' && item.kind !== selectedType.value) {
       return false
     }
 
-    if (selectedGenre.value !== 'all' && !movie.genres.includes(selectedGenre.value)) {
+    if (titleQuery && !item.title.toLowerCase().includes(titleQuery)) {
       return false
     }
 
-    if (yearFromValue.value !== null && (movie.year === null || movie.year < yearFromValue.value)) {
+    if (selectedGenre.value !== 'all' && !item.genres.includes(selectedGenre.value)) {
       return false
     }
 
-    if (yearToValue.value !== null && (movie.year === null || movie.year > yearToValue.value)) {
+    if (yearFromValue.value !== null && (item.year === null || item.year < yearFromValue.value)) {
+      return false
+    }
+
+    if (yearToValue.value !== null && (item.year === null || item.year > yearToValue.value)) {
       return false
     }
 
@@ -114,17 +123,17 @@ const filteredMovies = computed(() => {
 
 const totalPages = computed(() => {
   const safePageSize = Math.max(1, pageSize.value)
-  return Math.max(1, Math.ceil(filteredMovies.value.length / safePageSize))
+  return Math.max(1, Math.ceil(filteredItems.value.length / safePageSize))
 })
 
-const paginatedMovies = computed(() => {
+const paginatedItems = computed(() => {
   const safePageSize = Math.max(1, pageSize.value)
   const startIndex = (currentPage.value - 1) * safePageSize
-  return filteredMovies.value.slice(startIndex, startIndex + safePageSize)
+  return filteredItems.value.slice(startIndex, startIndex + safePageSize)
 })
 
 watch(
-  [searchQuery, selectedGenre, yearFrom, yearTo, sortBy, pageSize],
+  [searchQuery, selectedType, selectedGenre, yearFrom, yearTo, sortBy, pageSize],
   () => {
     currentPage.value = 1
   },
@@ -249,7 +258,7 @@ const toEntityArray = (response: unknown): Record<string, unknown>[] => {
   return single ? [single] : []
 }
 
-const toCatalogMovie = (entity: Record<string, unknown>): CatalogMovie | null => {
+const toCatalogItem = (entity: Record<string, unknown>, kind: CatalogKind): CatalogItem | null => {
   const title = asString(getField(entity, 'title'))
   if (!title) {
     return null
@@ -266,6 +275,8 @@ const toCatalogMovie = (entity: Record<string, unknown>): CatalogMovie | null =>
 
   return {
     id: entityId,
+    kind,
+    kindLabel: kind === 'movie' ? 'Movie' : 'Series',
     title,
     year: asNumber(getField(entity, 'year')),
     genres,
@@ -273,6 +284,14 @@ const toCatalogMovie = (entity: Record<string, unknown>): CatalogMovie | null =>
     publishedAt:
       parseTimestamp(getField(entity, 'publishedAt')) || parseTimestamp(getField(entity, 'createdAt')),
   }
+}
+
+const formatCatalogLoadError = (section: string, error: unknown): string => {
+  if (error instanceof StrapiRequestError) {
+    return `${section} API ${error.status}: ${error.message}`
+  }
+
+  return `${section} failed to load`
 }
 
 const loadCatalog = async (): Promise<void> => {
@@ -283,31 +302,40 @@ const loadCatalog = async (): Promise<void> => {
   activeToken.value = token
 
   if (!token) {
-    movies.value = []
+    items.value = []
     loadingCatalog.value = false
     return
   }
 
-  try {
-    const response = await streamyApi.getMovies({ token })
-    const entities = toEntityArray(response)
+  const [moviesResult, seriesResult] = await Promise.allSettled([
+    streamyApi.getMovies({ token }),
+    streamyApi.getSeries({ token }),
+  ])
 
-    movies.value = entities
-      .map((entity) => toCatalogMovie(entity))
-      .filter((movie): movie is CatalogMovie => movie !== null)
-  } catch (error) {
-    movies.value = []
+  const errors: string[] = []
 
-    if (error instanceof StrapiRequestError) {
-      catalogError.value = `API ${error.status}: ${error.message}`
-      loadingCatalog.value = false
-      return
-    }
+  const movieEntities =
+    moviesResult.status === 'fulfilled'
+      ? toEntityArray(moviesResult.value)
+      : (errors.push(formatCatalogLoadError('Movies', moviesResult.reason)), [])
 
-    catalogError.value = 'Failed to load catalogue data from Strapi.'
-  } finally {
-    loadingCatalog.value = false
-  }
+  const seriesEntities =
+    seriesResult.status === 'fulfilled'
+      ? toEntityArray(seriesResult.value)
+      : (errors.push(formatCatalogLoadError('Series', seriesResult.reason)), [])
+
+  const movieItems = movieEntities
+    .map((entity) => toCatalogItem(entity, 'movie'))
+    .filter((item): item is CatalogItem => item !== null)
+
+  const seriesItems = seriesEntities
+    .map((entity) => toCatalogItem(entity, 'series'))
+    .filter((item): item is CatalogItem => item !== null)
+
+  items.value = [...movieItems, ...seriesItems]
+
+  catalogError.value = errors.join(' | ')
+  loadingCatalog.value = false
 }
 
 const nextPage = (): void => {
@@ -322,8 +350,8 @@ const previousPage = (): void => {
   }
 }
 
-const openMovieDetails = (movieId: string): void => {
-  emit('openMovie', movieId)
+const openItemDetails = (item: CatalogItem): void => {
+  emit('openMedia', { kind: item.kind, id: item.id })
 }
 
 onMounted(() => {
@@ -335,9 +363,9 @@ onMounted(() => {
   <main class="catalog-layout">
     <section class="catalog-hero reveal-1">
       <p class="eyebrow">Catalogue</p>
-      <h1>All Movies</h1>
+      <h1>All Media</h1>
       <p class="hero-copy">
-        Movie list is connected to Strapi. Use filters to quickly narrow by title, genre and year.
+        Catalogue reads both movies and series from Strapi. Filter by type, title, genre and year.
       </p>
       <p v-if="catalogStatus" class="status-copy">{{ catalogStatus }}</p>
     </section>
@@ -345,8 +373,17 @@ onMounted(() => {
     <section class="catalog-filters reveal-2">
       <div class="catalog-filter-grid">
         <label class="filter-block">
+          <span>Type</span>
+          <select v-model="selectedType" class="filter-input">
+            <option value="all">All types</option>
+            <option value="movie">Movies</option>
+            <option value="series">Series</option>
+          </select>
+        </label>
+
+        <label class="filter-block">
           <span>Search title</span>
-          <input v-model="searchQuery" class="filter-input" type="text" placeholder="Ex: Smoke Test Movie" />
+          <input v-model="searchQuery" class="filter-input" type="text" placeholder="Ex: One Piece" />
         </label>
 
         <label class="filter-block">
@@ -385,32 +422,32 @@ onMounted(() => {
       </div>
 
       <div class="catalog-meta-row">
-        <p>{{ filteredMovies.length }} movies match your filters.</p>
+        <p>{{ filteredItems.length }} items match your filters.</p>
         <p>Page {{ currentPage }} / {{ totalPages }}</p>
       </div>
     </section>
 
     <section class="catalog-grid">
-      <article v-for="movie in paginatedMovies" :key="movie.id" class="catalog-card">
+      <article v-for="item in paginatedItems" :key="`${item.kind}-${item.id}`" class="catalog-card">
         <div class="catalog-cover"></div>
         <div class="catalog-card-head">
-          <h4>{{ movie.title }}</h4>
-          <span>{{ movie.year ?? 'N/A' }}</span>
+          <h4>{{ item.title }}</h4>
+          <span>{{ item.year ?? 'N/A' }}</span>
         </div>
         <p class="catalog-genres">
-          {{ movie.genres.length > 0 ? movie.genres.join(' • ') : 'No genre assigned' }}
+          {{ item.kindLabel }}{{ item.genres.length > 0 ? ` • ${item.genres.join(' • ')}` : '' }}
         </p>
-        <p class="catalog-synopsis">{{ movie.synopsis || 'No synopsis available yet.' }}</p>
+        <p class="catalog-synopsis">{{ item.synopsis || 'No synopsis available yet.' }}</p>
         <div class="catalog-card-actions">
-          <button type="button" class="catalog-open-btn" @click="openMovieDetails(movie.id)">
-            Open details
+          <button type="button" class="catalog-open-btn" @click="openItemDetails(item)">
+            {{ item.kind === 'movie' ? 'Open movie' : 'Open series' }}
           </button>
         </div>
       </article>
 
-      <article v-if="!loadingCatalog && paginatedMovies.length === 0" class="catalog-card catalog-empty-card">
-        <h4>No movie found</h4>
-        <p>Adjust filters or publish movie entries in Strapi.</p>
+      <article v-if="!loadingCatalog && paginatedItems.length === 0" class="catalog-card catalog-empty-card">
+        <h4>No media found</h4>
+        <p>Adjust filters or publish movies/series in Strapi.</p>
       </article>
     </section>
 

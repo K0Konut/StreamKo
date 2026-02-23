@@ -431,6 +431,15 @@ const openContinueItem = (item: ContinueItem): void => {
   }
 }
 
+const openCatalogMedia = (target: { kind: 'movie' | 'series'; id: string }): void => {
+  if (target.kind === 'movie') {
+    openMovieDetail(target.id)
+    return
+  }
+
+  openSeriesDetail(target.id)
+}
+
 const handlePlayerBack = (target: PlayerBackTarget): void => {
   if (target.kind === 'movie') {
     openMovieDetail(target.id)
@@ -992,7 +1001,7 @@ onUnmounted(() => {
       </section>
     </main>
 
-    <CatalogView v-else-if="isCatalogRoute" @open-movie="openMovieDetail" />
+    <CatalogView v-else-if="isCatalogRoute" @open-media="openCatalogMedia" />
 
     <MovieDetailView
       v-else-if="isMovieRoute && currentMovieId"
