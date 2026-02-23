@@ -222,17 +222,17 @@ const getRelationEntities = (entity: Record<string, unknown>, key: string): Reco
 }
 
 const getEntityId = (entity: Record<string, unknown>): string => {
-  const id = asString(getField(entity, 'id'))
-  if (id) {
-    return id
-  }
-
   const documentId = asString(getField(entity, 'documentId'))
   if (documentId) {
     return documentId
   }
 
-  return `movie-${Math.random().toString(36).slice(2, 8)}`
+  const id = asString(getField(entity, 'id'))
+  if (id) {
+    return id
+  }
+
+  return ''
 }
 
 const toEntityArray = (response: unknown): Record<string, unknown>[] => {
@@ -255,12 +255,17 @@ const toCatalogMovie = (entity: Record<string, unknown>): CatalogMovie | null =>
     return null
   }
 
+  const entityId = getEntityId(entity)
+  if (!entityId) {
+    return null
+  }
+
   const genres = getRelationEntities(entity, 'genres')
     .map((genreEntity) => asString(getField(genreEntity, 'name')))
     .filter((genreName) => genreName.length > 0)
 
   return {
-    id: getEntityId(entity),
+    id: entityId,
     title,
     year: asNumber(getField(entity, 'year')),
     genres,

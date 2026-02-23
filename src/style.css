@@ -766,6 +766,56 @@ a {
   line-height: 1.45;
 }
 
+.player-layout {
+  position: relative;
+  z-index: 1;
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: 1.65fr 1fr;
+  gap: 1rem;
+}
+
+.player-main,
+.player-side-panel {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+}
+
+.player-main {
+  padding: 1.45rem 1.5rem;
+}
+
+.player-side-panel {
+  padding: 1.1rem;
+  background: var(--panel);
+}
+
+.player-video-block {
+  margin-top: 1rem;
+}
+
+.player-video {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #000;
+  aspect-ratio: 16 / 9;
+}
+
+.player-actions {
+  margin-top: 0.95rem;
+}
+
+.player-source-link {
+  margin-top: 0.55rem;
+  display: inline-block;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+
 .reveal-1,
 .reveal-2 {
   animation: reveal 0.7s ease both;
@@ -825,6 +875,10 @@ a {
   }
 
   .movie-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .player-layout {
     grid-template-columns: 1fr;
   }
 }

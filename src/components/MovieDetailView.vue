@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   backToCatalog: []
+  playMovie: [movieId: string]
 }>()
 
 type MovieDetail = {
@@ -49,7 +50,7 @@ const detailStatus = computed(() => {
   }
 
   if (!activeToken.value) {
-    return 'No JWT found in localStorage. Login flow will populate this in Sprint 1.'
+    return 'You are logged out. Sign in to load movie details from Strapi.'
   }
 
   if (detailError.value) {
@@ -169,17 +170,17 @@ const toAbsoluteMediaUrl = (url: string): string => {
 }
 
 const getEntityId = (entity: Record<string, unknown>): string => {
-  const id = asString(getField(entity, 'id'))
-  if (id) {
-    return id
-  }
-
   const documentId = asString(getField(entity, 'documentId'))
   if (documentId) {
     return documentId
   }
 
-  return `movie-${Math.random().toString(36).slice(2, 8)}`
+  const id = asString(getField(entity, 'id'))
+  if (id) {
+    return id
+  }
+
+  return ''
 }
 
 const toMovieDetail = (entity: Record<string, unknown>): MovieDetail | null => {
@@ -235,6 +236,46 @@ const matchesMovieId = (progressEntity: Record<string, unknown>, movieId: string
   return false
 }
 
+const sameIdentifier = (left: string, right: string): boolean => {
+  if (!left || !right) {
+    return false
+  }
+
+  if (left === right) {
+    return true
+  }
+
+  const leftNumber = Number(left)
+  const rightNumber = Number(right)
+  return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber === rightNumber
+}
+
+const matchesMovieEntityId = (entity: Record<string, unknown>, movieId: string): boolean => {
+  const entityId = asString(getField(entity, 'id'))
+  const entityDocumentId = asString(getField(entity, 'documentId'))
+  return sameIdentifier(entityId, movieId) || sameIdentifier(entityDocumentId, movieId)
+}
+
+const collectMovieIdentifiers = (entity: Record<string, unknown>, routeMovieId: string): string[] => {
+  const identifiers = new Set<string>()
+
+  if (routeMovieId.trim()) {
+    identifiers.add(routeMovieId.trim())
+  }
+
+  const id = asString(getField(entity, 'id'))
+  if (id) {
+    identifiers.add(id)
+  }
+
+  const documentId = asString(getField(entity, 'documentId'))
+  if (documentId) {
+    identifiers.add(documentId)
+  }
+
+  return [...identifiers]
+}
+
 const loadMovieDetail = async (): Promise<void> => {
   loadingMovie.value = true
   detailError.value = ''
@@ -251,14 +292,12 @@ const loadMovieDetail = async (): Promise<void> => {
   }
 
   try {
-    const me = await streamyApi.getMe({ token })
-
-    const [movieResponse, progressResponse] = await Promise.all([
-      streamyApi.getMovieById(props.movieId, { token }),
-      streamyApi.getWatchProgresses({ token, userId: me.id }),
+    const [moviesResponse, progressResponse] = await Promise.all([
+      streamyApi.getMovies({ token }),
+      streamyApi.getWatchProgresses({ token }),
     ])
 
-    const movieEntity = toEntityArray(movieResponse)[0]
+    const movieEntity = toEntityArray(moviesResponse).find((entity) => matchesMovieEntityId(entity, props.movieId))
     if (!movieEntity) {
       detailError.value = 'Movie not found.'
       loadingMovie.value = false
@@ -272,10 +311,11 @@ const loadMovieDetail = async (): Promise<void> => {
       return
     }
 
+    const movieIdentifiers = collectMovieIdentifiers(movieEntity, props.movieId)
     const progressEntities = toEntityArray(progressResponse)
     const movieProgress = progressEntities.find((progressEntity) => {
       const kind = asString(getField(progressEntity, 'kind'))
-      return kind === 'movie' && matchesMovieId(progressEntity, props.movieId)
+      return kind === 'movie' && movieIdentifiers.some((identifier) => matchesMovieId(progressEntity, identifier))
     })
 
     if (movieProgress) {
@@ -297,6 +337,14 @@ const loadMovieDetail = async (): Promise<void> => {
   } finally {
     loadingMovie.value = false
   }
+}
+
+const openPlayer = (): void => {
+  if (!canPlay.value) {
+    return
+  }
+
+  emit('playMovie', movie.value?.id ?? props.movieId)
 }
 
 watch(
@@ -330,7 +378,7 @@ watch(
       <p v-if="detailStatus" class="status-copy">{{ detailStatus }}</p>
 
       <div class="hero-actions">
-        <button type="button" class="primary-btn" :disabled="!canPlay">
+        <button type="button" class="primary-btn" :disabled="!canPlay" @click="openPlayer">
           {{ ctaLabel }}
         </button>
         <button type="button" class="secondary-btn" @click="emit('backToCatalog')">

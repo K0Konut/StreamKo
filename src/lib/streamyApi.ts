@@ -33,8 +33,8 @@ type TokenOptions = {
 
 type UpdateWatchProgressInput = {
   kind?: 'movie' | 'episode'
-  movie?: number | null
-  episode?: number | null
+  movie?: number | string | null
+  episode?: number | string | null
   positionSeconds?: number
   durationSeconds?: number
   completed?: boolean
@@ -42,8 +42,8 @@ type UpdateWatchProgressInput = {
 
 type CreateWatchProgressInput = {
   kind: 'movie' | 'episode'
-  movie?: number | null
-  episode?: number | null
+  movie?: number | string | null
+  episode?: number | string | null
   positionSeconds: number
   durationSeconds?: number
   completed?: boolean
@@ -61,24 +61,7 @@ const SERIES_WITH_EPISODES_POPULATE = [
 ] as const
 const WATCH_PROGRESS_POPULATE = ['movie', 'episode'] as const
 
-const buildWatchProgressQuery = (userId?: number): StrapiQuery => {
-  const base: StrapiQuery = { populate: WATCH_PROGRESS_POPULATE }
-
-  if (userId === undefined) {
-    return base
-  }
-
-  return {
-    ...base,
-    filters: {
-      user: {
-        id: {
-          $eq: userId,
-        },
-      },
-    },
-  }
-}
+const buildWatchProgressQuery = (): StrapiQuery => ({ populate: WATCH_PROGRESS_POPULATE })
 
 export const streamyApi = {
   login(identifier: string, password: string, signal?: AbortSignal) {
@@ -153,10 +136,10 @@ export const streamyApi = {
     })
   },
 
-  getWatchProgresses(options: TokenOptions & { userId?: number }) {
+  getWatchProgresses(options: TokenOptions) {
     return strapiRequest<StrapiListResponse>('/api/watch-progresses', {
       token: options.token,
-      query: buildWatchProgressQuery(options.userId),
+      query: buildWatchProgressQuery(),
       signal: options.signal,
     })
   },
