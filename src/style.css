@@ -564,6 +564,20 @@ a {
   line-height: 1.45;
 }
 
+.catalog-card-actions {
+  margin-top: 0.72rem;
+}
+
+.catalog-open-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-700);
+  font-weight: 700;
+  padding: 0.4rem 0.72rem;
+  cursor: pointer;
+}
+
 .catalog-empty-card {
   min-height: 190px;
   display: grid;
@@ -596,6 +610,97 @@ a {
 .catalog-pagination span {
   color: var(--ink-500);
   font-size: 0.88rem;
+}
+
+.movie-layout {
+  position: relative;
+  z-index: 1;
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: 1.65fr 1fr;
+  gap: 1rem;
+}
+
+.movie-hero,
+.movie-side-panel {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+}
+
+.movie-hero {
+  padding: 1.45rem 1.5rem;
+}
+
+.movie-side-panel {
+  padding: 1.1rem;
+  background: var(--panel);
+}
+
+.movie-back-link {
+  margin-bottom: 0.95rem;
+  border: 0;
+  background: transparent;
+  color: var(--amber-deep);
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0;
+}
+
+.movie-pill-row {
+  margin-bottom: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.movie-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.24rem 0.56rem;
+  background: rgba(255, 255, 255, 0.74);
+  font-size: 0.78rem;
+  color: var(--ink-700);
+  font-weight: 700;
+}
+
+.movie-cast-list {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.movie-cast-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.3rem 0.58rem;
+  background: #fff;
+  font-size: 0.82rem;
+  color: var(--ink-700);
+  font-weight: 700;
+}
+
+.movie-video-block {
+  margin-top: 1rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--line);
+}
+
+.movie-video-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ink-700);
+}
+
+.movie-muted-copy {
+  margin: 0.45rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-500);
+  line-height: 1.45;
 }
 
 .reveal-1,
@@ -654,6 +759,10 @@ a {
 
   .catalog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .movie-layout {
+    grid-template-columns: 1fr;
   }
 }
 

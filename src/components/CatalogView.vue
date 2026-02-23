@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
+import { findAuthToken } from '../lib/authToken'
 import { StrapiRequestError } from '../lib/strapiClient'
 import { streamyApi } from '../lib/streamyApi'
 
@@ -12,6 +13,10 @@ type CatalogMovie = {
   synopsis: string
   publishedAt: number
 }
+
+const emit = defineEmits<{
+  openMovie: [movieId: string]
+}>()
 
 const loadingCatalog = ref(false)
 const catalogError = ref('')
@@ -265,43 +270,11 @@ const toCatalogMovie = (entity: Record<string, unknown>): CatalogMovie | null =>
   }
 }
 
-const findTokenInLocalStorage = (): string | null => {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  const commonKeys = ['streamko.jwt', 'streamy.jwt', 'auth.jwt', 'jwt', 'token']
-  for (const key of commonKeys) {
-    const value = window.localStorage.getItem(key)
-    if (value) {
-      return value
-    }
-  }
-
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index)
-    if (!key) {
-      continue
-    }
-
-    const value = window.localStorage.getItem(key)
-    if (!value) {
-      continue
-    }
-
-    if (value.split('.').length === 3) {
-      return value
-    }
-  }
-
-  return null
-}
-
 const loadCatalog = async (): Promise<void> => {
   loadingCatalog.value = true
   catalogError.value = ''
 
-  const token = findTokenInLocalStorage()
+  const token = findAuthToken()
   activeToken.value = token
 
   if (!token) {
@@ -342,6 +315,10 @@ const previousPage = (): void => {
   if (currentPage.value > 1) {
     currentPage.value -= 1
   }
+}
+
+const openMovieDetails = (movieId: string): void => {
+  emit('openMovie', movieId)
 }
 
 onMounted(() => {
@@ -419,6 +396,11 @@ onMounted(() => {
           {{ movie.genres.length > 0 ? movie.genres.join(' • ') : 'No genre assigned' }}
         </p>
         <p class="catalog-synopsis">{{ movie.synopsis || 'No synopsis available yet.' }}</p>
+        <div class="catalog-card-actions">
+          <button type="button" class="catalog-open-btn" @click="openMovieDetails(movie.id)">
+            Open details
+          </button>
+        </div>
       </article>
 
       <article v-if="!loadingCatalog && paginatedMovies.length === 0" class="catalog-card catalog-empty-card">

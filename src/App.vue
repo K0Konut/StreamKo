@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import CatalogView from './components/CatalogView.vue'
+import MovieDetailView from './components/MovieDetailView.vue'
+import { findAuthToken } from './lib/authToken'
 import { StrapiRequestError } from './lib/strapiClient'
 import { streamyApi } from './lib/streamyApi'
 
@@ -24,14 +26,32 @@ type ContinueItem = {
   updatedAt: number
 }
 
-type AppRoute = '/' | '/catalog'
+type AppRouteName = 'home' | 'catalog' | 'movie'
+type AppRoute = {
+  name: AppRouteName
+  movieId: string | null
+}
 
 type NavLink = {
   label: string
-  route?: AppRoute
+  route?: '/' | '/catalog'
 }
 
-const resolveRoute = (pathname: string): AppRoute => (pathname === '/catalog' ? '/catalog' : '/')
+const resolveRoute = (pathname: string): AppRoute => {
+  if (pathname === '/catalog') {
+    return { name: 'catalog', movieId: null }
+  }
+
+  const movieMatch = pathname.match(/^\/movie\/([^/]+)$/)
+  if (movieMatch?.[1]) {
+    return {
+      name: 'movie',
+      movieId: decodeURIComponent(movieMatch[1]),
+    }
+  }
+
+  return { name: 'home', movieId: null }
+}
 
 const links: NavLink[] = [
   { label: 'Home', route: '/' },
@@ -41,11 +61,15 @@ const links: NavLink[] = [
 ]
 
 const currentRoute = ref<AppRoute>(
-  typeof window === 'undefined' ? '/' : resolveRoute(window.location.pathname),
+  typeof window === 'undefined'
+    ? { name: 'home', movieId: null }
+    : resolveRoute(window.location.pathname),
 )
 
-const isCatalogRoute = computed(() => currentRoute.value === '/catalog')
-const isHomeRoute = computed(() => !isCatalogRoute.value)
+const isCatalogRoute = computed(() => currentRoute.value.name === 'catalog')
+const isHomeRoute = computed(() => currentRoute.value.name === 'home')
+const isMovieRoute = computed(() => currentRoute.value.name === 'movie')
+const currentMovieId = computed(() => currentRoute.value.movieId)
 
 const syncRouteFromLocation = (): void => {
   if (typeof window === 'undefined') {
@@ -53,15 +77,16 @@ const syncRouteFromLocation = (): void => {
   }
 
   const nextRoute = resolveRoute(window.location.pathname)
-  const hasChanged = nextRoute !== currentRoute.value
+  const hasChanged =
+    nextRoute.name !== currentRoute.value.name || nextRoute.movieId !== currentRoute.value.movieId
   currentRoute.value = nextRoute
 
-  if (hasChanged && nextRoute === '/') {
+  if (hasChanged && nextRoute.name === 'home') {
     void loadHome()
   }
 }
 
-const navigateTo = (route?: AppRoute): void => {
+const navigateTo = (route?: '/' | '/catalog'): void => {
   if (!route) {
     return
   }
@@ -70,19 +95,48 @@ const navigateTo = (route?: AppRoute): void => {
     return
   }
 
-  if (currentRoute.value === route && window.location.pathname === route) {
+  if (window.location.pathname === route) {
     return
   }
 
   window.history.pushState({}, '', route)
-  currentRoute.value = route
+  currentRoute.value = resolveRoute(route)
 
   if (route === '/') {
     void loadHome()
   }
 }
 
-const isActiveRoute = (route?: AppRoute): boolean => (route ? currentRoute.value === route : false)
+const openMovieDetail = (movieId: string): void => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const normalizedId = movieId.trim()
+  if (!normalizedId) {
+    return
+  }
+
+  const nextPath = `/movie/${encodeURIComponent(normalizedId)}`
+  if (window.location.pathname === nextPath) {
+    return
+  }
+
+  window.history.pushState({}, '', nextPath)
+  currentRoute.value = { name: 'movie', movieId: normalizedId }
+}
+
+const isActiveRoute = (route?: '/' | '/catalog'): boolean => {
+  if (!route) {
+    return false
+  }
+
+  if (route === '/') {
+    return currentRoute.value.name === 'home'
+  }
+
+  return currentRoute.value.name === 'catalog'
+}
 const fallbackGenres = ['Drama', 'Sci-Fi', 'Thriller', 'Documentary', 'Comedy', 'Action']
 
 const releases = ref<Release[]>([])
@@ -348,38 +402,6 @@ const buildContinueItems = (progressEntities: Record<string, unknown>[]): Contin
   return items.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 12)
 }
 
-const findTokenInLocalStorage = (): string | null => {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  const commonKeys = ['streamko.jwt', 'streamy.jwt', 'auth.jwt', 'jwt', 'token']
-  for (const key of commonKeys) {
-    const value = window.localStorage.getItem(key)
-    if (value) {
-      return value
-    }
-  }
-
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index)
-    if (!key) {
-      continue
-    }
-
-    const value = window.localStorage.getItem(key)
-    if (!value) {
-      continue
-    }
-
-    if (value.split('.').length === 3) {
-      return value
-    }
-  }
-
-  return null
-}
-
 const toEntityArray = (response: unknown): Record<string, unknown>[] => {
   const payload = asRecord(response)
   const data = payload?.data
@@ -419,7 +441,7 @@ const loadHome = async (): Promise<void> => {
   loadingHome.value = true
   homeError.value = ''
 
-  const token = findTokenInLocalStorage()
+  const token = findAuthToken()
   activeToken.value = token
 
   if (!token) {
@@ -469,7 +491,7 @@ onMounted(() => {
     syncRouteFromLocation()
   }
 
-  if (currentRoute.value === '/') {
+  if (currentRoute.value.name === 'home') {
     void loadHome()
   }
 })
@@ -606,6 +628,12 @@ onUnmounted(() => {
       </section>
     </main>
 
-    <CatalogView v-else />
+    <CatalogView v-else-if="isCatalogRoute" @open-movie="openMovieDetail" />
+
+    <MovieDetailView
+      v-else-if="isMovieRoute && currentMovieId"
+      :movie-id="currentMovieId"
+      @back-to-catalog="navigateTo('/catalog')"
+    />
   </div>
 </template>
