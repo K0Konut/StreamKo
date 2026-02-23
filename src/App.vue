@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
+import CatalogView from './components/CatalogView.vue'
 import { StrapiRequestError } from './lib/strapiClient'
 import { streamyApi } from './lib/streamyApi'
 
@@ -23,7 +24,65 @@ type ContinueItem = {
   updatedAt: number
 }
 
-const links = ['Home', 'Catalogue', 'Pour toi', 'Logout']
+type AppRoute = '/' | '/catalog'
+
+type NavLink = {
+  label: string
+  route?: AppRoute
+}
+
+const resolveRoute = (pathname: string): AppRoute => (pathname === '/catalog' ? '/catalog' : '/')
+
+const links: NavLink[] = [
+  { label: 'Home', route: '/' },
+  { label: 'Catalogue', route: '/catalog' },
+  { label: 'Pour toi' },
+  { label: 'Logout' },
+]
+
+const currentRoute = ref<AppRoute>(
+  typeof window === 'undefined' ? '/' : resolveRoute(window.location.pathname),
+)
+
+const isCatalogRoute = computed(() => currentRoute.value === '/catalog')
+const isHomeRoute = computed(() => !isCatalogRoute.value)
+
+const syncRouteFromLocation = (): void => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const nextRoute = resolveRoute(window.location.pathname)
+  const hasChanged = nextRoute !== currentRoute.value
+  currentRoute.value = nextRoute
+
+  if (hasChanged && nextRoute === '/') {
+    void loadHome()
+  }
+}
+
+const navigateTo = (route?: AppRoute): void => {
+  if (!route) {
+    return
+  }
+
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (currentRoute.value === route && window.location.pathname === route) {
+    return
+  }
+
+  window.history.pushState({}, '', route)
+  currentRoute.value = route
+
+  if (route === '/') {
+    void loadHome()
+  }
+}
+
+const isActiveRoute = (route?: AppRoute): boolean => (route ? currentRoute.value === route : false)
 const fallbackGenres = ['Drama', 'Sci-Fi', 'Thriller', 'Documentary', 'Comedy', 'Action']
 
 const releases = ref<Release[]>([])
@@ -405,7 +464,20 @@ const loadHome = async (): Promise<void> => {
 }
 
 onMounted(() => {
-  void loadHome()
+  if (typeof window !== 'undefined') {
+    window.addEventListener('popstate', syncRouteFromLocation)
+    syncRouteFromLocation()
+  }
+
+  if (currentRoute.value === '/') {
+    void loadHome()
+  }
+})
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('popstate', syncRouteFromLocation)
+  }
 })
 </script>
 
@@ -420,12 +492,20 @@ onMounted(() => {
         <span class="brand-name">StreamKo</span>
       </div>
       <nav class="nav-links">
-        <a v-for="link in links" :key="link" href="#">{{ link }}</a>
+        <a
+          v-for="link in links"
+          :key="`${link.label}-${link.route ?? 'disabled'}`"
+          :href="link.route ?? '#'"
+          :class="{ active: isActiveRoute(link.route), disabled: !link.route }"
+          @click.prevent="navigateTo(link.route)"
+        >
+          {{ link.label }}
+        </a>
       </nav>
       <button class="ghost-btn">Premium</button>
     </header>
 
-    <main class="layout">
+    <main v-if="isHomeRoute" class="layout">
       <section class="hero reveal-1">
         <p class="eyebrow">MVP Online</p>
         <h1>Cinematic streaming, with a premium surface.</h1>
@@ -434,8 +514,12 @@ onMounted(() => {
         </p>
         <p v-if="homeStatus" class="status-copy">{{ homeStatus }}</p>
         <div class="hero-actions">
-          <button class="primary-btn">Open Catalogue</button>
-          <button class="secondary-btn">Continue Watching</button>
+          <button class="primary-btn" type="button" @click="navigateTo('/catalog')">
+            Open Catalogue
+          </button>
+          <button class="secondary-btn" type="button" @click="navigateTo('/catalog')">
+            Continue Watching
+          </button>
         </div>
       </section>
 
@@ -521,5 +605,7 @@ onMounted(() => {
         </div>
       </section>
     </main>
+
+    <CatalogView v-else />
   </div>
 </template>
