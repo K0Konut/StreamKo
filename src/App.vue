@@ -2,8 +2,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import CatalogView from './components/CatalogView.vue'
+import LoginView from './components/LoginView.vue'
 import MovieDetailView from './components/MovieDetailView.vue'
-import { findAuthToken } from './lib/authToken'
+import { clearAuthToken, findAuthToken, setAuthToken } from './lib/authToken'
 import { StrapiRequestError } from './lib/strapiClient'
 import { streamyApi } from './lib/streamyApi'
 
@@ -26,18 +27,25 @@ type ContinueItem = {
   updatedAt: number
 }
 
-type AppRouteName = 'home' | 'catalog' | 'movie'
+type AppRouteName = 'home' | 'catalog' | 'movie' | 'login'
 type AppRoute = {
   name: AppRouteName
   movieId: string | null
 }
 
+type NavLinkAction = 'logout'
+
 type NavLink = {
   label: string
-  route?: '/' | '/catalog'
+  route?: '/' | '/catalog' | '/login'
+  action?: NavLinkAction
 }
 
 const resolveRoute = (pathname: string): AppRoute => {
+  if (pathname === '/login') {
+    return { name: 'login', movieId: null }
+  }
+
   if (pathname === '/catalog') {
     return { name: 'catalog', movieId: null }
   }
@@ -53,32 +61,72 @@ const resolveRoute = (pathname: string): AppRoute => {
   return { name: 'home', movieId: null }
 }
 
+const routeToPath = (route: AppRoute): string => {
+  if (route.name === 'catalog') {
+    return '/catalog'
+  }
+
+  if (route.name === 'movie' && route.movieId) {
+    return `/movie/${encodeURIComponent(route.movieId)}`
+  }
+
+  if (route.name === 'login') {
+    return '/login'
+  }
+
+  return '/'
+}
+
+const isProtectedRoute = (route: AppRoute): boolean => route.name !== 'login'
+
 const links: NavLink[] = [
   { label: 'Home', route: '/' },
   { label: 'Catalogue', route: '/catalog' },
   { label: 'Pour toi' },
-  { label: 'Logout' },
+  { label: 'Logout', action: 'logout' },
 ]
 
+const authToken = ref<string | null>(findAuthToken())
+const pendingRedirectPath = ref<string | null>(null)
+
 const currentRoute = ref<AppRoute>(
-  typeof window === 'undefined'
-    ? { name: 'home', movieId: null }
-    : resolveRoute(window.location.pathname),
+  typeof window === 'undefined' ? { name: 'login', movieId: null } : resolveRoute(window.location.pathname),
 )
 
+const isLoginRoute = computed(() => currentRoute.value.name === 'login')
 const isCatalogRoute = computed(() => currentRoute.value.name === 'catalog')
 const isHomeRoute = computed(() => currentRoute.value.name === 'home')
 const isMovieRoute = computed(() => currentRoute.value.name === 'movie')
 const currentMovieId = computed(() => currentRoute.value.movieId)
+const showTopbar = computed(() => !isLoginRoute.value)
 
 const syncRouteFromLocation = (): void => {
   if (typeof window === 'undefined') {
     return
   }
 
-  const nextRoute = resolveRoute(window.location.pathname)
-  const hasChanged =
-    nextRoute.name !== currentRoute.value.name || nextRoute.movieId !== currentRoute.value.movieId
+  const requestedRoute = resolveRoute(window.location.pathname)
+
+  if (!authToken.value && isProtectedRoute(requestedRoute)) {
+    pendingRedirectPath.value = routeToPath(requestedRoute)
+    if (window.location.pathname !== '/login') {
+      window.history.replaceState({}, '', '/login')
+    }
+    currentRoute.value = { name: 'login', movieId: null }
+    return
+  }
+
+  if (authToken.value && requestedRoute.name === 'login') {
+    if (window.location.pathname !== '/') {
+      window.history.replaceState({}, '', '/')
+    }
+    currentRoute.value = { name: 'home', movieId: null }
+    void loadHome()
+    return
+  }
+
+  const nextRoute = requestedRoute
+  const hasChanged = nextRoute.name !== currentRoute.value.name || nextRoute.movieId !== currentRoute.value.movieId
   currentRoute.value = nextRoute
 
   if (hasChanged && nextRoute.name === 'home') {
@@ -86,7 +134,7 @@ const syncRouteFromLocation = (): void => {
   }
 }
 
-const navigateTo = (route?: '/' | '/catalog'): void => {
+const navigateTo = (route?: '/' | '/catalog' | '/login'): void => {
   if (!route) {
     return
   }
@@ -95,12 +143,28 @@ const navigateTo = (route?: '/' | '/catalog'): void => {
     return
   }
 
-  if (window.location.pathname === route) {
+  if (route === '/login' && authToken.value) {
+    navigateTo('/')
+    return
+  }
+
+  const targetRoute = resolveRoute(route)
+
+  if (!authToken.value && isProtectedRoute(targetRoute)) {
+    pendingRedirectPath.value = route
+    if (window.location.pathname !== '/login') {
+      window.history.pushState({}, '', '/login')
+    }
+    currentRoute.value = { name: 'login', movieId: null }
+    return
+  }
+
+  if (window.location.pathname === route && currentRoute.value.name === targetRoute.name) {
     return
   }
 
   window.history.pushState({}, '', route)
-  currentRoute.value = resolveRoute(route)
+  currentRoute.value = targetRoute
 
   if (route === '/') {
     void loadHome()
@@ -118,7 +182,16 @@ const openMovieDetail = (movieId: string): void => {
   }
 
   const nextPath = `/movie/${encodeURIComponent(normalizedId)}`
-  if (window.location.pathname === nextPath) {
+  if (!authToken.value) {
+    pendingRedirectPath.value = nextPath
+    if (window.location.pathname !== '/login') {
+      window.history.pushState({}, '', '/login')
+    }
+    currentRoute.value = { name: 'login', movieId: null }
+    return
+  }
+
+  if (window.location.pathname === nextPath && currentRoute.value.name === 'movie') {
     return
   }
 
@@ -126,7 +199,7 @@ const openMovieDetail = (movieId: string): void => {
   currentRoute.value = { name: 'movie', movieId: normalizedId }
 }
 
-const isActiveRoute = (route?: '/' | '/catalog'): boolean => {
+const isActiveRoute = (route?: '/' | '/catalog' | '/login'): boolean => {
   if (!route) {
     return false
   }
@@ -135,8 +208,59 @@ const isActiveRoute = (route?: '/' | '/catalog'): boolean => {
     return currentRoute.value.name === 'home'
   }
 
-  return currentRoute.value.name === 'catalog'
+  if (route === '/login') {
+    return currentRoute.value.name === 'login'
+  }
+
+  return currentRoute.value.name === 'catalog' || currentRoute.value.name === 'movie'
 }
+
+const handleLoginSuccess = (token: string): void => {
+  setAuthToken(token)
+  authToken.value = token
+
+  const destination = pendingRedirectPath.value ?? '/'
+  pendingRedirectPath.value = null
+
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.history.pushState({}, '', destination)
+  currentRoute.value = resolveRoute(destination)
+
+  if (currentRoute.value.name === 'home') {
+    void loadHome()
+  }
+}
+
+const logout = (): void => {
+  clearAuthToken()
+  authToken.value = null
+  pendingRedirectPath.value = null
+  releases.value = []
+  continueWatching.value = []
+  detectedGenres.value = []
+
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (window.location.pathname !== '/login') {
+    window.history.pushState({}, '', '/login')
+  }
+  currentRoute.value = { name: 'login', movieId: null }
+}
+
+const onNavLinkClick = (link: NavLink): void => {
+  if (link.action === 'logout') {
+    logout()
+    return
+  }
+
+  navigateTo(link.route)
+}
+
 const fallbackGenres = ['Drama', 'Sci-Fi', 'Thriller', 'Documentary', 'Comedy', 'Action']
 
 const releases = ref<Release[]>([])
@@ -144,7 +268,6 @@ const continueWatching = ref<ContinueItem[]>([])
 const detectedGenres = ref<string[]>([])
 const loadingHome = ref(false)
 const homeError = ref('')
-const activeToken = ref<string | null>(null)
 
 const genres = computed(() => (detectedGenres.value.length > 0 ? detectedGenres.value : fallbackGenres))
 const nowPlaying = computed(() => releases.value[0] ?? null)
@@ -154,8 +277,8 @@ const homeStatus = computed(() => {
     return 'Loading data from Strapi...'
   }
 
-  if (!activeToken.value) {
-    return 'No JWT found in localStorage. Login flow will populate this in Sprint 1.'
+  if (!authToken.value) {
+    return 'You are logged out. Sign in to load home data from Strapi.'
   }
 
   if (homeError.value) {
@@ -442,7 +565,7 @@ const loadHome = async (): Promise<void> => {
   homeError.value = ''
 
   const token = findAuthToken()
-  activeToken.value = token
+  authToken.value = token
 
   if (!token) {
     releases.value = []
@@ -491,7 +614,7 @@ onMounted(() => {
     syncRouteFromLocation()
   }
 
-  if (currentRoute.value.name === 'home') {
+  if (currentRoute.value.name === 'home' && !loadingHome.value) {
     void loadHome()
   }
 })
@@ -508,7 +631,7 @@ onUnmounted(() => {
     <div class="shape shape-amber" aria-hidden="true"></div>
     <div class="shape shape-ink" aria-hidden="true"></div>
 
-    <header class="topbar">
+    <header v-if="showTopbar" class="topbar">
       <div class="brand">
         <span class="brand-mark">SK</span>
         <span class="brand-name">StreamKo</span>
@@ -516,10 +639,10 @@ onUnmounted(() => {
       <nav class="nav-links">
         <a
           v-for="link in links"
-          :key="`${link.label}-${link.route ?? 'disabled'}`"
+          :key="`${link.label}-${link.route ?? link.action ?? 'disabled'}`"
           :href="link.route ?? '#'"
-          :class="{ active: isActiveRoute(link.route), disabled: !link.route }"
-          @click.prevent="navigateTo(link.route)"
+          :class="{ active: isActiveRoute(link.route), disabled: !link.route && !link.action }"
+          @click.prevent="onNavLinkClick(link)"
         >
           {{ link.label }}
         </a>
@@ -527,7 +650,9 @@ onUnmounted(() => {
       <button class="ghost-btn">Premium</button>
     </header>
 
-    <main v-if="isHomeRoute" class="layout">
+    <LoginView v-if="isLoginRoute" @login-success="handleLoginSuccess" />
+
+    <main v-else-if="isHomeRoute" class="layout">
       <section class="hero reveal-1">
         <p class="eyebrow">MVP Online</p>
         <h1>Cinematic streaming, with a premium surface.</h1>

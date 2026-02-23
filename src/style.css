@@ -444,6 +444,69 @@ a {
   background: linear-gradient(90deg, var(--amber), var(--mint));
 }
 
+.login-layout {
+  position: relative;
+  z-index: 1;
+  margin-top: 2.2rem;
+  display: grid;
+  place-items: center;
+}
+
+.login-panel {
+  width: min(560px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  padding: 1.5rem 1.55rem;
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+}
+
+.login-form {
+  margin-top: 1.15rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.login-field {
+  display: grid;
+  gap: 0.36rem;
+}
+
+.login-field span {
+  font-size: 0.74rem;
+  color: var(--ink-500);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.login-input {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink-700);
+  font-family: inherit;
+  font-size: 0.94rem;
+  padding: 0.62rem 0.7rem;
+}
+
+.login-input:focus {
+  outline: 2px solid rgba(187, 122, 43, 0.36);
+  outline-offset: 1px;
+}
+
+.login-error {
+  margin: 0;
+  color: #9f2b12;
+  font-size: 0.87rem;
+  font-weight: 700;
+}
+
+.login-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .catalog-layout {
   position: relative;
   z-index: 1;

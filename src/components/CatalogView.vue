@@ -54,7 +54,7 @@ const catalogStatus = computed(() => {
   }
 
   if (!activeToken.value) {
-    return 'No JWT found in localStorage. Login flow will populate this in Sprint 1.'
+    return 'You are logged out. Sign in to load the catalogue from Strapi.'
   }
 
   if (catalogError.value) {
