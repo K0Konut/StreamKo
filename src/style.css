@@ -790,6 +790,76 @@ a {
   border-top: 1px solid var(--line);
 }
 
+.series-picker-block {
+  margin-top: 1.1rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--line);
+}
+
+.series-picker-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ink-700);
+}
+
+.series-season-row {
+  margin-top: 0.58rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.series-season-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink-700);
+  padding: 0.34rem 0.58rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.series-season-chip.active {
+  border-color: rgba(187, 122, 43, 0.52);
+  background: rgba(187, 122, 43, 0.16);
+  color: var(--amber-deep);
+}
+
+.series-episode-list {
+  margin-top: 0.72rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.series-episode-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 0.6rem 0.65rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.series-episode-card.active {
+  border-color: rgba(187, 122, 43, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(187, 122, 43, 0.2);
+}
+
+.series-episode-title {
+  margin: 0;
+  font-size: 0.89rem;
+  font-weight: 700;
+  color: var(--ink-700);
+}
+
+.series-episode-btn {
+  padding: 0.44rem 0.68rem;
+  white-space: nowrap;
+}
+
 .movie-video-title {
   margin: 0;
   font-size: 0.88rem;

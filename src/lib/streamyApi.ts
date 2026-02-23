@@ -55,7 +55,21 @@ const SERIES_WITH_EPISODES_POPULATE = {
   genres: true,
   cast: true,
   seasons: {
-    populate: 'episodes',
+    populate: {
+      episodes: {
+        populate: {
+          video: true,
+        },
+      },
+    },
+  },
+} as const
+const EPISODE_POPULATE = {
+  video: true,
+  season: {
+    populate: {
+      series: true,
+    },
   },
 } as const
 const WATCH_PROGRESS_POPULATE = ['movie', 'episode'] as const
@@ -129,7 +143,17 @@ export const streamyApi = {
     return strapiRequest<StrapiSingleResponse>(`/api/episodes/${id}`, {
       token: options.token,
       query: {
-        populate: ['video'],
+        populate: EPISODE_POPULATE,
+      },
+      signal: options.signal,
+    })
+  },
+
+  getEpisodes(options: TokenOptions) {
+    return strapiRequest<StrapiListResponse>('/api/episodes', {
+      token: options.token,
+      query: {
+        populate: EPISODE_POPULATE,
       },
       signal: options.signal,
     })
@@ -173,5 +197,6 @@ export const streamyApi = {
 export const streamyPopulate = {
   movie: MOVIE_POPULATE,
   series: SERIES_WITH_EPISODES_POPULATE,
+  episode: EPISODE_POPULATE,
   watchProgress: WATCH_PROGRESS_POPULATE,
 } as const

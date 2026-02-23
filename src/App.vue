@@ -5,6 +5,7 @@ import CatalogView from './components/CatalogView.vue'
 import LoginView from './components/LoginView.vue'
 import MovieDetailView from './components/MovieDetailView.vue'
 import PlayerView from './components/PlayerView.vue'
+import SeriesDetailView from './components/SeriesDetailView.vue'
 import { clearAuthToken, findAuthToken, setAuthToken } from './lib/authToken'
 import { StrapiRequestError } from './lib/strapiClient'
 import { streamyApi } from './lib/streamyApi'
@@ -31,10 +32,17 @@ type ContinueItem = {
 }
 
 type PlayerKind = 'movie' | 'episode'
-type AppRouteName = 'home' | 'catalog' | 'movie' | 'login' | 'player'
+type PlayerBackTargetKind = 'movie' | 'series'
+type PlayerBackTarget = {
+  kind: PlayerBackTargetKind
+  id: string
+}
+
+type AppRouteName = 'home' | 'catalog' | 'movie' | 'series' | 'login' | 'player'
 type AppRoute = {
   name: AppRouteName
   movieId: string | null
+  seriesId: string | null
   playerKind: PlayerKind | null
   playerId: string | null
 }
@@ -49,11 +57,11 @@ type NavLink = {
 
 const resolveRoute = (pathname: string): AppRoute => {
   if (pathname === '/login') {
-    return { name: 'login', movieId: null, playerKind: null, playerId: null }
+    return { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
   }
 
   if (pathname === '/catalog') {
-    return { name: 'catalog', movieId: null, playerKind: null, playerId: null }
+    return { name: 'catalog', movieId: null, seriesId: null, playerKind: null, playerId: null }
   }
 
   const playerMatch = pathname.match(/^\/player\/(movie|episode)\/([^/]+)$/)
@@ -61,6 +69,7 @@ const resolveRoute = (pathname: string): AppRoute => {
     return {
       name: 'player',
       movieId: null,
+      seriesId: null,
       playerKind: playerMatch[1] as PlayerKind,
       playerId: decodeURIComponent(playerMatch[2]),
     }
@@ -71,12 +80,24 @@ const resolveRoute = (pathname: string): AppRoute => {
     return {
       name: 'movie',
       movieId: decodeURIComponent(movieMatch[1]),
+      seriesId: null,
       playerKind: null,
       playerId: null,
     }
   }
 
-  return { name: 'home', movieId: null, playerKind: null, playerId: null }
+  const seriesMatch = pathname.match(/^\/series\/([^/]+)$/)
+  if (seriesMatch?.[1]) {
+    return {
+      name: 'series',
+      movieId: null,
+      seriesId: decodeURIComponent(seriesMatch[1]),
+      playerKind: null,
+      playerId: null,
+    }
+  }
+
+  return { name: 'home', movieId: null, seriesId: null, playerKind: null, playerId: null }
 }
 
 const routeToPath = (route: AppRoute): string => {
@@ -86,6 +107,10 @@ const routeToPath = (route: AppRoute): string => {
 
   if (route.name === 'movie' && route.movieId) {
     return `/movie/${encodeURIComponent(route.movieId)}`
+  }
+
+  if (route.name === 'series' && route.seriesId) {
+    return `/series/${encodeURIComponent(route.seriesId)}`
   }
 
   if (route.name === 'player' && route.playerKind && route.playerId) {
@@ -113,7 +138,7 @@ const pendingRedirectPath = ref<string | null>(null)
 
 const currentRoute = ref<AppRoute>(
   typeof window === 'undefined'
-    ? { name: 'login', movieId: null, playerKind: null, playerId: null }
+    ? { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
     : resolveRoute(window.location.pathname),
 )
 
@@ -121,8 +146,10 @@ const isLoginRoute = computed(() => currentRoute.value.name === 'login')
 const isCatalogRoute = computed(() => currentRoute.value.name === 'catalog')
 const isHomeRoute = computed(() => currentRoute.value.name === 'home')
 const isMovieRoute = computed(() => currentRoute.value.name === 'movie')
+const isSeriesRoute = computed(() => currentRoute.value.name === 'series')
 const isPlayerRoute = computed(() => currentRoute.value.name === 'player')
 const currentMovieId = computed(() => currentRoute.value.movieId)
+const currentSeriesId = computed(() => currentRoute.value.seriesId)
 const currentPlayerKind = computed<PlayerKind>(() => currentRoute.value.playerKind ?? 'movie')
 const currentPlayerId = computed(() => currentRoute.value.playerId ?? '')
 const showTopbar = computed(() => !isLoginRoute.value)
@@ -139,7 +166,7 @@ const syncRouteFromLocation = (): void => {
     if (window.location.pathname !== '/login') {
       window.history.replaceState({}, '', '/login')
     }
-    currentRoute.value = { name: 'login', movieId: null, playerKind: null, playerId: null }
+    currentRoute.value = { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
     return
   }
 
@@ -147,7 +174,7 @@ const syncRouteFromLocation = (): void => {
     if (window.location.pathname !== '/') {
       window.history.replaceState({}, '', '/')
     }
-    currentRoute.value = { name: 'home', movieId: null, playerKind: null, playerId: null }
+    currentRoute.value = { name: 'home', movieId: null, seriesId: null, playerKind: null, playerId: null }
     void loadHome()
     return
   }
@@ -156,6 +183,7 @@ const syncRouteFromLocation = (): void => {
   const hasChanged =
     nextRoute.name !== currentRoute.value.name ||
     nextRoute.movieId !== currentRoute.value.movieId ||
+    nextRoute.seriesId !== currentRoute.value.seriesId ||
     nextRoute.playerKind !== currentRoute.value.playerKind ||
     nextRoute.playerId !== currentRoute.value.playerId
   currentRoute.value = nextRoute
@@ -186,7 +214,7 @@ const navigateTo = (route?: '/' | '/catalog' | '/login'): void => {
     if (window.location.pathname !== '/login') {
       window.history.pushState({}, '', '/login')
     }
-    currentRoute.value = { name: 'login', movieId: null, playerKind: null, playerId: null }
+    currentRoute.value = { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
     return
   }
 
@@ -221,7 +249,7 @@ const openMovieDetail = (movieId: string): void => {
     if (window.location.pathname !== '/login') {
       window.history.pushState({}, '', '/login')
     }
-    currentRoute.value = { name: 'login', movieId: null, playerKind: null, playerId: null }
+    currentRoute.value = { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
     return
   }
 
@@ -230,7 +258,47 @@ const openMovieDetail = (movieId: string): void => {
   }
 
   window.history.pushState({}, '', nextPath)
-  currentRoute.value = { name: 'movie', movieId: normalizedId, playerKind: null, playerId: null }
+  currentRoute.value = {
+    name: 'movie',
+    movieId: normalizedId,
+    seriesId: null,
+    playerKind: null,
+    playerId: null,
+  }
+}
+
+const openSeriesDetail = (seriesId: string): void => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const normalizedId = seriesId.trim()
+  if (!normalizedId) {
+    return
+  }
+
+  const nextPath = `/series/${encodeURIComponent(normalizedId)}`
+  if (!authToken.value) {
+    pendingRedirectPath.value = nextPath
+    if (window.location.pathname !== '/login') {
+      window.history.pushState({}, '', '/login')
+    }
+    currentRoute.value = { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
+    return
+  }
+
+  if (window.location.pathname === nextPath && currentRoute.value.name === 'series') {
+    return
+  }
+
+  window.history.pushState({}, '', nextPath)
+  currentRoute.value = {
+    name: 'series',
+    movieId: null,
+    seriesId: normalizedId,
+    playerKind: null,
+    playerId: null,
+  }
 }
 
 const openPlayer = (kind: PlayerKind, mediaId: string): void => {
@@ -249,7 +317,7 @@ const openPlayer = (kind: PlayerKind, mediaId: string): void => {
     if (window.location.pathname !== '/login') {
       window.history.pushState({}, '', '/login')
     }
-    currentRoute.value = { name: 'login', movieId: null, playerKind: null, playerId: null }
+    currentRoute.value = { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
     return
   }
 
@@ -263,7 +331,13 @@ const openPlayer = (kind: PlayerKind, mediaId: string): void => {
   }
 
   window.history.pushState({}, '', nextPath)
-  currentRoute.value = { name: 'player', movieId: null, playerKind: kind, playerId: normalizedId }
+  currentRoute.value = {
+    name: 'player',
+    movieId: null,
+    seriesId: null,
+    playerKind: kind,
+    playerId: normalizedId,
+  }
 }
 
 const isActiveRoute = (route?: '/' | '/catalog' | '/login'): boolean => {
@@ -282,6 +356,7 @@ const isActiveRoute = (route?: '/' | '/catalog' | '/login'): boolean => {
   return (
     currentRoute.value.name === 'catalog' ||
     currentRoute.value.name === 'movie' ||
+    currentRoute.value.name === 'series' ||
     currentRoute.value.name === 'player'
   )
 }
@@ -320,7 +395,7 @@ const logout = (): void => {
   if (window.location.pathname !== '/login') {
     window.history.pushState({}, '', '/login')
   }
-  currentRoute.value = { name: 'login', movieId: null, playerKind: null, playerId: null }
+  currentRoute.value = { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
 }
 
 const onNavLinkClick = (link: NavLink): void => {
@@ -335,7 +410,10 @@ const onNavLinkClick = (link: NavLink): void => {
 const openRelease = (release: Release): void => {
   if (release.kind === 'Movie') {
     openMovieDetail(release.id)
+    return
   }
+
+  openSeriesDetail(release.id)
 }
 
 const openContinueItem = (item: ContinueItem): void => {
@@ -345,7 +423,21 @@ const openContinueItem = (item: ContinueItem): void => {
 
   if (item.kind === 'movie') {
     openPlayer('movie', item.mediaId)
+    return
   }
+
+  if (item.kind === 'episode') {
+    openPlayer('episode', item.mediaId)
+  }
+}
+
+const handlePlayerBack = (target: PlayerBackTarget): void => {
+  if (target.kind === 'movie') {
+    openMovieDetail(target.id)
+    return
+  }
+
+  openSeriesDetail(target.id)
 }
 
 const openFirstContinue = (): void => {
@@ -848,10 +940,9 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="home-card-btn"
-                :disabled="item.kind !== 'Movie'"
                 @click="openRelease(item)"
               >
-                {{ item.kind === 'Movie' ? 'Open detail' : 'Series soon' }}
+                {{ item.kind === 'Movie' ? 'Open movie' : 'Open series' }}
               </button>
             </div>
           </article>
@@ -886,10 +977,10 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="continue-resume-btn"
-                :disabled="item.kind !== 'movie' || !item.mediaId"
+                :disabled="!item.mediaId"
                 @click="openContinueItem(item)"
               >
-                {{ item.kind === 'movie' ? 'Reprendre' : 'Episode soon' }}
+                {{ item.kind === 'movie' ? 'Reprendre' : 'Resume episode' }}
               </button>
             </div>
           </article>
@@ -910,11 +1001,18 @@ onUnmounted(() => {
       @play-movie="openPlayer('movie', $event)"
     />
 
+    <SeriesDetailView
+      v-else-if="isSeriesRoute && currentSeriesId"
+      :series-id="currentSeriesId"
+      @back-to-catalog="navigateTo('/catalog')"
+      @play-episode="openPlayer('episode', $event)"
+    />
+
     <PlayerView
       v-else-if="isPlayerRoute && currentPlayerId"
       :kind="currentPlayerKind"
       :media-id="currentPlayerId"
-      @back-to-detail="openMovieDetail"
+      @back-to-detail="handlePlayerBack"
     />
   </div>
 </template>

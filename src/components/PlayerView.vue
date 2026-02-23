@@ -6,6 +6,10 @@ import { StrapiRequestError } from '../lib/strapiClient'
 import { streamyApi } from '../lib/streamyApi'
 
 type PlayerKind = 'movie' | 'episode'
+type PlayerBackTarget = {
+  kind: 'movie' | 'series'
+  id: string
+}
 
 type PlayerMedia = {
   id: string
@@ -14,6 +18,8 @@ type PlayerMedia = {
   year: number | null
   synopsis: string
   videoUrl: string | null
+  chapter: string | null
+  backTarget: PlayerBackTarget
 }
 
 const props = defineProps<{
@@ -22,7 +28,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  backToDetail: [movieId: string]
+  backToDetail: [target: PlayerBackTarget]
 }>()
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:1337').replace(/\/+$/, '')
@@ -31,6 +37,7 @@ const loadingMedia = ref(false)
 const playerError = ref('')
 const activeToken = ref<string | null>(null)
 const media = ref<PlayerMedia | null>(null)
+const loadedKind = ref<PlayerKind>('movie')
 const progressPosition = ref(0)
 const progressCompleted = ref(false)
 const durationSeconds = ref<number | null>(null)
@@ -89,20 +96,18 @@ const playerStatus = computed(() => {
     return autoplayError.value
   }
 
-  if (props.kind !== 'movie') {
-    return 'Episode player is planned for Sprint 2.'
-  }
-
   if (!media.value) {
-    return 'Movie not found.'
+    return props.kind === 'movie' ? 'Movie not found.' : 'Episode not found.'
   }
 
   if (!media.value.videoUrl) {
-    return 'No MP4 linked for this movie yet.'
+    return props.kind === 'movie' ? 'No MP4 linked for this movie yet.' : 'No MP4 linked for this episode yet.'
   }
 
   if (progressCompleted.value) {
-    return 'This movie is marked as completed.'
+    return props.kind === 'movie'
+      ? 'This movie is marked as completed.'
+      : 'This episode is marked as completed.'
   }
 
   if (shouldResume.value) {
@@ -111,6 +116,10 @@ const playerStatus = computed(() => {
 
   return 'Autosave is active every 8 seconds while playing.'
 })
+
+const backButtonLabel = computed(() =>
+  props.kind === 'movie' ? 'Back to movie detail' : 'Back to series detail',
+)
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -258,6 +267,63 @@ const toMovieMedia = (entity: Record<string, unknown>): PlayerMedia | null => {
     year: asNumber(getField(entity, 'year')),
     synopsis: asString(getField(entity, 'synopsis')),
     videoUrl: videoUrl || null,
+    chapter: null,
+    backTarget: {
+      kind: 'movie',
+      id,
+    },
+  }
+}
+
+const buildEpisodeChapter = (seasonNumber: number | null, episodeNumber: number | null): string => {
+  if (seasonNumber !== null && episodeNumber !== null) {
+    return `S${seasonNumber}:E${episodeNumber}`
+  }
+
+  if (episodeNumber !== null) {
+    return `Episode ${episodeNumber}`
+  }
+
+  return 'Episode'
+}
+
+const toEpisodeMedia = (entity: Record<string, unknown>): PlayerMedia | null => {
+  const relationId = getRelationId(entity)
+  if (!relationId) {
+    return null
+  }
+
+  const episodeId = getEntityId(entity) || props.mediaId
+  const episodeTitle = asString(getField(entity, 'title'))
+  const episodeNumber = asNumber(getField(entity, 'number'))
+
+  const seasonEntity = getRelationEntities(entity, 'season')[0]
+  const seasonNumber = seasonEntity ? asNumber(getField(seasonEntity, 'number')) : null
+
+  const seriesEntity = seasonEntity ? getRelationEntities(seasonEntity, 'series')[0] : null
+  const seriesId = seriesEntity ? getEntityId(seriesEntity) : ''
+  const seriesTitle = seriesEntity ? asString(getField(seriesEntity, 'title')) : ''
+
+  const chapterPrefix = buildEpisodeChapter(seasonNumber, episodeNumber)
+  const chapter = episodeTitle ? `${chapterPrefix} - ${episodeTitle}` : chapterPrefix
+
+  const videoEntity = getRelationEntities(entity, 'video')[0]
+  const videoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+
+  return {
+    id: episodeId,
+    relationId,
+    title: seriesTitle || episodeTitle || chapterPrefix,
+    year: seriesEntity ? asNumber(getField(seriesEntity, 'year')) : null,
+    synopsis:
+      asString(getField(entity, 'synopsis')) ||
+      (seriesEntity ? asString(getField(seriesEntity, 'synopsis')) : ''),
+    videoUrl: videoUrl || null,
+    chapter,
+    backTarget: {
+      kind: 'series',
+      id: seriesId || props.mediaId,
+    },
   }
 }
 
@@ -282,6 +348,12 @@ const matchesMovieEntityId = (entity: Record<string, unknown>, movieId: string):
   return sameIdentifier(entityId, movieId) || sameIdentifier(entityDocumentId, movieId)
 }
 
+const matchesEpisodeEntityId = (entity: Record<string, unknown>, episodeId: string): boolean => {
+  const entityId = asString(getField(entity, 'id'))
+  const entityDocumentId = asString(getField(entity, 'documentId'))
+  return sameIdentifier(entityId, episodeId) || sameIdentifier(entityDocumentId, episodeId)
+}
+
 const matchesMovieProgress = (progressEntity: Record<string, unknown>): boolean => {
   const movieEntity = getRelationEntities(progressEntity, 'movie')[0]
   if (!movieEntity) {
@@ -290,6 +362,30 @@ const matchesMovieProgress = (progressEntity: Record<string, unknown>): boolean 
 
   const relationId = asString(getField(movieEntity, 'id'))
   const relationDocumentId = asString(getField(movieEntity, 'documentId'))
+
+  const targetIds = [props.mediaId]
+  if (media.value?.id) {
+    targetIds.push(media.value.id)
+  }
+
+  const relationTarget = media.value ? String(media.value.relationId) : ''
+  if (relationTarget) {
+    targetIds.push(relationTarget)
+  }
+
+  return targetIds.some((targetId) => {
+    return sameIdentifier(relationId, targetId) || sameIdentifier(relationDocumentId, targetId)
+  })
+}
+
+const matchesEpisodeProgress = (progressEntity: Record<string, unknown>): boolean => {
+  const episodeEntity = getRelationEntities(progressEntity, 'episode')[0]
+  if (!episodeEntity) {
+    return false
+  }
+
+  const relationId = asString(getField(episodeEntity, 'id'))
+  const relationDocumentId = asString(getField(episodeEntity, 'documentId'))
 
   const targetIds = [props.mediaId]
   if (media.value?.id) {
@@ -332,11 +428,13 @@ const stopAutosave = (): void => {
 
 const saveProgress = async (force: boolean, completedOverride?: boolean): Promise<void> => {
   const token = activeToken.value
-  const movie = media.value
+  const currentMedia = media.value
 
-  if (!token || !movie || props.kind !== 'movie') {
+  if (!token || !currentMedia) {
     return
   }
+
+  const progressKind = loadedKind.value
 
   const video = videoRef.value
   const positionSeconds = video ? Math.max(0, Math.floor(video.currentTime)) : progressPosition.value
@@ -380,9 +478,9 @@ const saveProgress = async (force: boolean, completedOverride?: boolean): Promis
 
   try {
     const payload = {
-      kind: 'movie' as const,
-      movie: movie.relationId,
-      episode: null,
+      kind: progressKind,
+      movie: progressKind === 'movie' ? currentMedia.relationId : null,
+      episode: progressKind === 'episode' ? currentMedia.relationId : null,
       positionSeconds,
       durationSeconds: nextDuration ?? undefined,
       completed,
@@ -543,7 +641,13 @@ const forceSave = (): void => {
 const backToDetail = (): void => {
   stopAutosave()
   void saveProgress(true)
-  emit('backToDetail', media.value?.id ?? props.mediaId)
+
+  const fallbackTarget: PlayerBackTarget =
+    props.kind === 'movie'
+      ? { kind: 'movie', id: props.mediaId }
+      : { kind: 'series', id: props.mediaId }
+
+  emit('backToDetail', media.value?.backTarget ?? fallbackTarget)
 }
 
 const loadPlayer = async (): Promise<void> => {
@@ -560,6 +664,7 @@ const loadPlayer = async (): Promise<void> => {
   resumeApplied.value = false
   lastSavedAt.value = 0
   lastSavedPosition.value = 0
+  loadedKind.value = props.kind
 
   const token = findAuthToken()
   activeToken.value = token
@@ -569,45 +674,75 @@ const loadPlayer = async (): Promise<void> => {
     return
   }
 
-  if (props.kind !== 'movie') {
-    loadingMedia.value = false
-    return
-  }
-
   try {
-    const [moviesResponse, progressResponse] = await Promise.all([
-      streamyApi.getMovies({ token }),
-      streamyApi.getWatchProgresses({ token }),
-    ])
+    if (props.kind === 'movie') {
+      const [moviesResponse, progressResponse] = await Promise.all([
+        streamyApi.getMovies({ token }),
+        streamyApi.getWatchProgresses({ token }),
+      ])
 
-    const movieEntity = toEntityArray(moviesResponse).find((entity) => matchesMovieEntityId(entity, props.mediaId))
-    if (!movieEntity) {
-      playerError.value = 'Movie not found.'
-      loadingMedia.value = false
-      return
-    }
+      const movieEntity = toEntityArray(moviesResponse).find((entity) => matchesMovieEntityId(entity, props.mediaId))
+      if (!movieEntity) {
+        playerError.value = 'Movie not found.'
+        loadingMedia.value = false
+        return
+      }
 
-    media.value = toMovieMedia(movieEntity)
-    if (!media.value) {
-      playerError.value = 'Movie payload is invalid.'
-      loadingMedia.value = false
-      return
-    }
+      media.value = toMovieMedia(movieEntity)
+      if (!media.value) {
+        playerError.value = 'Movie payload is invalid.'
+        loadingMedia.value = false
+        return
+      }
 
-    autoplayError.value = ''
+      const progressEntities = toEntityArray(progressResponse)
+      const movieProgress = progressEntities.find((progressEntity) => {
+        const kind = asString(getField(progressEntity, 'kind'))
+        return kind === 'movie' && matchesMovieProgress(progressEntity)
+      })
 
-    const progressEntities = toEntityArray(progressResponse)
-    const movieProgress = progressEntities.find((progressEntity) => {
-      const kind = asString(getField(progressEntity, 'kind'))
-      return kind === 'movie' && matchesMovieProgress(progressEntity)
-    })
+      if (movieProgress) {
+        progressRecordId.value = extractRecordId(movieProgress)
+        progressPosition.value = asNumber(getField(movieProgress, 'positionSeconds')) ?? 0
+        progressCompleted.value = Boolean(getField(movieProgress, 'completed'))
+        durationSeconds.value = asNumber(getField(movieProgress, 'durationSeconds'))
+        lastSavedPosition.value = progressPosition.value
+      }
+    } else {
+      const [episodesResponse, progressResponse] = await Promise.all([
+        streamyApi.getEpisodes({ token }),
+        streamyApi.getWatchProgresses({ token }),
+      ])
 
-    if (movieProgress) {
-      progressRecordId.value = extractRecordId(movieProgress)
-      progressPosition.value = asNumber(getField(movieProgress, 'positionSeconds')) ?? 0
-      progressCompleted.value = Boolean(getField(movieProgress, 'completed'))
-      durationSeconds.value = asNumber(getField(movieProgress, 'durationSeconds'))
-      lastSavedPosition.value = progressPosition.value
+      const episodeEntity = toEntityArray(episodesResponse).find((entity) =>
+        matchesEpisodeEntityId(entity, props.mediaId),
+      )
+      if (!episodeEntity) {
+        playerError.value = 'Episode not found.'
+        loadingMedia.value = false
+        return
+      }
+
+      media.value = toEpisodeMedia(episodeEntity)
+      if (!media.value) {
+        playerError.value = 'Episode payload is invalid.'
+        loadingMedia.value = false
+        return
+      }
+
+      const progressEntities = toEntityArray(progressResponse)
+      const episodeProgress = progressEntities.find((progressEntity) => {
+        const kind = asString(getField(progressEntity, 'kind'))
+        return kind === 'episode' && matchesEpisodeProgress(progressEntity)
+      })
+
+      if (episodeProgress) {
+        progressRecordId.value = extractRecordId(episodeProgress)
+        progressPosition.value = asNumber(getField(episodeProgress, 'positionSeconds')) ?? 0
+        progressCompleted.value = Boolean(getField(episodeProgress, 'completed'))
+        durationSeconds.value = asNumber(getField(episodeProgress, 'durationSeconds'))
+        lastSavedPosition.value = progressPosition.value
+      }
     }
   } catch (error) {
     media.value = null
@@ -661,18 +796,24 @@ onUnmounted(() => {
 <template>
   <main class="player-layout">
     <section class="player-main reveal-1">
-      <button type="button" class="movie-back-link" @click="backToDetail">Back to movie detail</button>
+      <button type="button" class="movie-back-link" @click="backToDetail">{{ backButtonLabel }}</button>
 
       <p class="eyebrow">Player</p>
-      <h1>{{ media?.title ?? 'Movie player' }}</h1>
+      <h1>{{ media?.title ?? (props.kind === 'movie' ? 'Movie player' : 'Episode player') }}</h1>
 
       <div class="movie-pill-row">
         <span class="movie-pill">{{ media?.year ?? 'N/A' }}</span>
         <span class="movie-pill">{{ props.kind }}</span>
+        <span v-if="media?.chapter" class="movie-pill">{{ media.chapter }}</span>
       </div>
 
       <p class="hero-copy">
-        {{ media?.synopsis || 'Play the linked MP4 file and progress will be synced to Strapi.' }}
+        {{
+          media?.synopsis ||
+          (props.kind === 'movie'
+            ? 'Play the linked MP4 file and progress will be synced to Strapi.'
+            : 'Play this episode and progress will be synced to Strapi.')
+        }}
       </p>
 
       <p v-if="playerStatus" class="status-copy">{{ playerStatus }}</p>
@@ -695,7 +836,9 @@ onUnmounted(() => {
         <a v-if="media?.videoUrl" class="player-source-link" :href="media.videoUrl" target="_blank" rel="noopener">
           Open raw video URL
         </a>
-        <p v-else class="movie-muted-copy">No video source available for this movie.</p>
+        <p v-else class="movie-muted-copy">
+          {{ props.kind === 'movie' ? 'No video source available for this movie.' : 'No video source available for this episode.' }}
+        </p>
       </div>
     </section>
 
