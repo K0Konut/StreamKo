@@ -50,15 +50,14 @@ type CreateWatchProgressInput = {
 }
 
 const MOVIE_POPULATE = ['poster', 'genres', 'cast', 'video'] as const
-const SERIES_POPULATE = ['poster', 'genres', 'cast'] as const
-const SERIES_WITH_EPISODES_POPULATE = [
-  ...SERIES_POPULATE,
-  {
-    seasons: {
-      populate: ['episodes'],
-    },
+const SERIES_WITH_EPISODES_POPULATE = {
+  poster: true,
+  genres: true,
+  cast: true,
+  seasons: {
+    populate: 'episodes',
   },
-] as const
+} as const
 const WATCH_PROGRESS_POPULATE = ['movie', 'episode'] as const
 
 const buildWatchProgressQuery = (): StrapiQuery => ({ populate: WATCH_PROGRESS_POPULATE })

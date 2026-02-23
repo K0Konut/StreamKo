@@ -26,6 +26,8 @@ type ContinueItem = {
   progress: number
   left: string
   updatedAt: number
+  kind: PlayerKind
+  mediaId: string | null
 }
 
 type PlayerKind = 'movie' | 'episode'
@@ -189,6 +191,9 @@ const navigateTo = (route?: '/' | '/catalog' | '/login'): void => {
   }
 
   if (window.location.pathname === route && currentRoute.value.name === targetRoute.name) {
+    if (route === '/') {
+      void loadHome()
+    }
     return
   }
 
@@ -327,6 +332,32 @@ const onNavLinkClick = (link: NavLink): void => {
   navigateTo(link.route)
 }
 
+const openRelease = (release: Release): void => {
+  if (release.kind === 'Movie') {
+    openMovieDetail(release.id)
+  }
+}
+
+const openContinueItem = (item: ContinueItem): void => {
+  if (!item.mediaId) {
+    return
+  }
+
+  if (item.kind === 'movie') {
+    openPlayer('movie', item.mediaId)
+  }
+}
+
+const openFirstContinue = (): void => {
+  const firstItem = continueWatching.value[0]
+  if (firstItem) {
+    openContinueItem(firstItem)
+    return
+  }
+
+  navigateTo('/catalog')
+}
+
 const fallbackGenres = ['Drama', 'Sci-Fi', 'Thriller', 'Documentary', 'Comedy', 'Action']
 
 const releases = ref<Release[]>([])
@@ -348,6 +379,10 @@ const homeStatus = computed(() => {
   }
 
   if (homeError.value) {
+    if (releases.value.length > 0 || continueWatching.value.length > 0) {
+      return `Partial data loaded. ${homeError.value}`
+    }
+
     return homeError.value
   }
 
@@ -443,17 +478,27 @@ const getRelationEntities = (entity: Record<string, unknown>, key: string): Reco
 }
 
 const getEntityId = (entity: Record<string, unknown>, fallbackPrefix: string): string => {
-  const id = asString(getField(entity, 'id'))
-  if (id) {
-    return id
-  }
-
   const documentId = asString(getField(entity, 'documentId'))
   if (documentId) {
     return documentId
   }
 
+  const id = asString(getField(entity, 'id'))
+  if (id) {
+    return id
+  }
+
   return `${fallbackPrefix}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+const getEntityIdentifier = (entity: Record<string, unknown>): string => {
+  const documentId = asString(getField(entity, 'documentId'))
+  if (documentId) {
+    return documentId
+  }
+
+  const id = asString(getField(entity, 'id'))
+  return id
 }
 
 const topLabelFor = (kind: 'Movie' | 'Series', publishedAt: number): string => {
@@ -471,6 +516,11 @@ const buildRelease = (entity: Record<string, unknown>, kind: 'Movie' | 'Series')
     return null
   }
 
+  const mediaId = getEntityIdentifier(entity)
+  if (!mediaId) {
+    return null
+  }
+
   const publishedAt =
     parseTimestamp(getField(entity, 'publishedAt')) || parseTimestamp(getField(entity, 'createdAt'))
 
@@ -478,7 +528,7 @@ const buildRelease = (entity: Record<string, unknown>, kind: 'Movie' | 'Series')
   const seasonCount = getRelationEntities(entity, 'seasons').length
 
   return {
-    id: getEntityId(entity, kind.toLowerCase()),
+    id: mediaId,
     title,
     year,
     kind,
@@ -556,6 +606,7 @@ const buildContinueItems = (progressEntities: Record<string, unknown>[]): Contin
 
       if (kind === 'movie' && movieEntity) {
         const title = asString(getField(movieEntity, 'title')) || 'Untitled movie'
+        const mediaId = getEntityIdentifier(movieEntity) || null
         const updatedAt =
           parseTimestamp(getField(entity, 'updatedAt')) || parseTimestamp(getField(entity, 'createdAt'))
 
@@ -566,11 +617,14 @@ const buildContinueItems = (progressEntities: Record<string, unknown>[]): Contin
           progress: normalizeProgressPercent(durationSeconds, positionSeconds),
           left: minutesLeft(durationSeconds, positionSeconds),
           updatedAt,
+          kind: 'movie',
+          mediaId,
         } satisfies ContinueItem
       }
 
       if (kind === 'episode' && episodeEntity) {
         const title = asString(getField(episodeEntity, 'title')) || 'Untitled episode'
+        const mediaId = getEntityIdentifier(episodeEntity) || null
         const updatedAt =
           parseTimestamp(getField(entity, 'updatedAt')) || parseTimestamp(getField(entity, 'createdAt'))
 
@@ -581,6 +635,8 @@ const buildContinueItems = (progressEntities: Record<string, unknown>[]): Contin
           progress: normalizeProgressPercent(durationSeconds, positionSeconds),
           left: minutesLeft(durationSeconds, positionSeconds),
           updatedAt,
+          kind: 'episode',
+          mediaId,
         } satisfies ContinueItem
       }
 
@@ -626,6 +682,14 @@ const collectTopGenres = (entities: Record<string, unknown>[]): string[] => {
     .slice(0, 6)
 }
 
+const formatHomeLoadError = (section: string, error: unknown): string => {
+  if (error instanceof StrapiRequestError) {
+    return `${section} API ${error.status}: ${error.message}`
+  }
+
+  return `${section} failed to load`
+}
+
 const loadHome = async (): Promise<void> => {
   loadingHome.value = true
   homeError.value = ''
@@ -641,34 +705,34 @@ const loadHome = async (): Promise<void> => {
     return
   }
 
-  try {
-    const [moviesResponse, seriesResponse, progressResponse] = await Promise.all([
-      streamyApi.getMovies({ token }),
-      streamyApi.getSeries({ token }),
-      streamyApi.getWatchProgresses({ token }),
-    ])
+  const [moviesResult, seriesResult, progressResult] = await Promise.allSettled([
+    streamyApi.getMovies({ token }),
+    streamyApi.getSeries({ token }),
+    streamyApi.getWatchProgresses({ token }),
+  ])
 
-    const movieEntities = toEntityArray(moviesResponse)
-    const seriesEntities = toEntityArray(seriesResponse)
-    const progressEntities = toEntityArray(progressResponse)
+  const homeErrors: string[] = []
 
-    releases.value = buildReleases(movieEntities, seriesEntities)
-    continueWatching.value = buildContinueItems(progressEntities)
-    detectedGenres.value = collectTopGenres([...movieEntities, ...seriesEntities])
-  } catch (error) {
-    releases.value = []
-    continueWatching.value = []
-    detectedGenres.value = []
+  const movieEntities =
+    moviesResult.status === 'fulfilled' ? toEntityArray(moviesResult.value) : (homeErrors.push(formatHomeLoadError('Movies', moviesResult.reason)), [])
 
-    if (error instanceof StrapiRequestError) {
-      homeError.value = `API ${error.status}: ${error.message}`
-      loadingHome.value = false
-      return
-    }
+  const seriesEntities =
+    seriesResult.status === 'fulfilled' ? toEntityArray(seriesResult.value) : (homeErrors.push(formatHomeLoadError('Series', seriesResult.reason)), [])
 
-    homeError.value = 'Failed to load home data from Strapi.'
-  } finally {
-    loadingHome.value = false
+  const progressEntities =
+    progressResult.status === 'fulfilled'
+      ? toEntityArray(progressResult.value)
+      : (homeErrors.push(formatHomeLoadError('Progress', progressResult.reason)), [])
+
+  releases.value = buildReleases(movieEntities, seriesEntities)
+  continueWatching.value = buildContinueItems(progressEntities)
+  detectedGenres.value = collectTopGenres([...movieEntities, ...seriesEntities])
+
+  homeError.value = homeErrors.join(' | ')
+  loadingHome.value = false
+
+  if (homeErrors.length > 0 && releases.value.length === 0 && continueWatching.value.length === 0) {
+    return
   }
 }
 
@@ -728,7 +792,7 @@ onUnmounted(() => {
           <button class="primary-btn" type="button" @click="navigateTo('/catalog')">
             Open Catalogue
           </button>
-          <button class="secondary-btn" type="button" @click="navigateTo('/catalog')">
+          <button class="secondary-btn" type="button" @click="openFirstContinue">
             Continue Watching
           </button>
         </div>
@@ -780,6 +844,16 @@ onUnmounted(() => {
             <h4>{{ item.title }}</h4>
             <p>{{ item.year ?? 'N/A' }}</p>
             <span class="badge">{{ item.label }}</span>
+            <div class="media-card-actions">
+              <button
+                type="button"
+                class="home-card-btn"
+                :disabled="item.kind !== 'Movie'"
+                @click="openRelease(item)"
+              >
+                {{ item.kind === 'Movie' ? 'Open detail' : 'Series soon' }}
+              </button>
+            </div>
           </article>
           <article v-if="!loadingHome && releases.length === 0" class="media-card empty-card">
             <h4>No releases yet</h4>
@@ -807,6 +881,16 @@ onUnmounted(() => {
             <p>{{ item.chapter }}</p>
             <div class="progress-track">
               <div class="progress-fill" :style="{ width: `${item.progress}%` }"></div>
+            </div>
+            <div class="continue-actions">
+              <button
+                type="button"
+                class="continue-resume-btn"
+                :disabled="item.kind !== 'movie' || !item.mediaId"
+                @click="openContinueItem(item)"
+              >
+                {{ item.kind === 'movie' ? 'Reprendre' : 'Episode soon' }}
+              </button>
             </div>
           </article>
           <article v-if="!loadingHome && continueWatching.length === 0" class="continue-card empty-card">

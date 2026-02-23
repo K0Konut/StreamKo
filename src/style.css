@@ -372,6 +372,25 @@ a {
   color: var(--ink-500);
 }
 
+.media-card-actions {
+  margin-top: 0.72rem;
+}
+
+.home-card-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-700);
+  font-weight: 700;
+  padding: 0.4rem 0.72rem;
+  cursor: pointer;
+}
+
+.home-card-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .empty-card {
   display: grid;
   place-content: center;
@@ -429,6 +448,25 @@ a {
   margin: 0.4rem 0 0.6rem;
   color: var(--ink-500);
   font-size: 0.86rem;
+}
+
+.continue-actions {
+  margin-top: 0.7rem;
+}
+
+.continue-resume-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-700);
+  font-weight: 700;
+  padding: 0.38rem 0.7rem;
+  cursor: pointer;
+}
+
+.continue-resume-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .progress-track {
