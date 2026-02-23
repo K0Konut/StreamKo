@@ -417,7 +417,23 @@ a {
   gap: 0.8rem;
 }
 
+.for-you-grid {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
 .continue-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.9rem;
+  background: var(--panel-strong);
+  animation: cardRise 0.45s ease both;
+  animation-delay: var(--delay);
+}
+
+.for-you-card {
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.9rem;
@@ -445,6 +461,12 @@ a {
 }
 
 .continue-card p {
+  margin: 0.4rem 0 0.6rem;
+  color: var(--ink-500);
+  font-size: 0.86rem;
+}
+
+.for-you-card p {
   margin: 0.4rem 0 0.6rem;
   color: var(--ink-500);
   font-size: 0.86rem;
@@ -971,6 +993,10 @@ a {
   }
 
   .continue-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .for-you-grid {
     grid-template-columns: 1fr;
   }
 

@@ -31,6 +31,15 @@ type ContinueItem = {
   mediaId: string | null
 }
 
+type ForYouItem = {
+  id: string
+  title: string
+  subtitle: string
+  updatedAt: number
+  kind: PlayerKind
+  mediaId: string | null
+}
+
 type PlayerKind = 'movie' | 'episode'
 type PlayerBackTargetKind = 'movie' | 'series'
 type PlayerBackTarget = {
@@ -47,7 +56,7 @@ type AppRoute = {
   playerId: string | null
 }
 
-type NavLinkAction = 'logout'
+type NavLinkAction = 'logout' | 'scrollForYou'
 
 type NavLink = {
   label: string
@@ -129,12 +138,13 @@ const isProtectedRoute = (route: AppRoute): boolean => route.name !== 'login'
 const links: NavLink[] = [
   { label: 'Home', route: '/' },
   { label: 'Catalogue', route: '/catalog' },
-  { label: 'Pour toi' },
+  { label: 'Pour toi', action: 'scrollForYou' },
   { label: 'Logout', action: 'logout' },
 ]
 
 const authToken = ref<string | null>(findAuthToken())
 const pendingRedirectPath = ref<string | null>(null)
+const FOR_YOU_SECTION_ID = 'for-you-section'
 
 const currentRoute = ref<AppRoute>(
   typeof window === 'undefined'
@@ -386,6 +396,8 @@ const logout = (): void => {
   pendingRedirectPath.value = null
   releases.value = []
   continueWatching.value = []
+  forYouItems.value = []
+  forYouGenres.value = []
   detectedGenres.value = []
 
   if (typeof window === 'undefined') {
@@ -401,6 +413,37 @@ const logout = (): void => {
 const onNavLinkClick = (link: NavLink): void => {
   if (link.action === 'logout') {
     logout()
+    return
+  }
+
+  if (link.action === 'scrollForYou') {
+    if (!authToken.value) {
+      navigateTo('/login')
+      return
+    }
+
+    const scrollToForYou = (): void => {
+      if (typeof window === 'undefined') {
+        return
+      }
+
+      const section = window.document.getElementById(FOR_YOU_SECTION_ID)
+      if (!section) {
+        return
+      }
+
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
+    if (currentRoute.value.name !== 'home') {
+      navigateTo('/')
+      if (typeof window !== 'undefined') {
+        window.setTimeout(scrollToForYou, 140)
+      }
+      return
+    }
+
+    scrollToForYou()
     return
   }
 
@@ -429,6 +472,19 @@ const openContinueItem = (item: ContinueItem): void => {
   if (item.kind === 'episode') {
     openPlayer('episode', item.mediaId)
   }
+}
+
+const openForYouItem = (item: ForYouItem): void => {
+  if (!item.mediaId) {
+    return
+  }
+
+  if (item.kind === 'movie') {
+    openPlayer('movie', item.mediaId)
+    return
+  }
+
+  openPlayer('episode', item.mediaId)
 }
 
 const openCatalogMedia = (target: { kind: 'movie' | 'series'; id: string }): void => {
@@ -463,12 +519,39 @@ const fallbackGenres = ['Drama', 'Sci-Fi', 'Thriller', 'Documentary', 'Comedy', 
 
 const releases = ref<Release[]>([])
 const continueWatching = ref<ContinueItem[]>([])
+const forYouItems = ref<ForYouItem[]>([])
+const forYouGenres = ref<string[]>([])
 const detectedGenres = ref<string[]>([])
 const loadingHome = ref(false)
 const homeError = ref('')
 
 const genres = computed(() => (detectedGenres.value.length > 0 ? detectedGenres.value : fallbackGenres))
+const personalGenres = computed(() => forYouGenres.value)
 const nowPlaying = computed(() => releases.value[0] ?? null)
+
+const formatTimeAgo = (timestamp: number): string => {
+  if (!timestamp) {
+    return 'Seen recently'
+  }
+
+  const deltaMs = Date.now() - timestamp
+  if (deltaMs <= 0) {
+    return 'Seen recently'
+  }
+
+  const minutes = Math.floor(deltaMs / 60000)
+  if (minutes < 60) {
+    return `${Math.max(1, minutes)}m ago`
+  }
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
+
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
 
 const homeStatus = computed(() => {
   if (loadingHome.value) {
@@ -480,14 +563,18 @@ const homeStatus = computed(() => {
   }
 
   if (homeError.value) {
-    if (releases.value.length > 0 || continueWatching.value.length > 0) {
+    if (releases.value.length > 0 || continueWatching.value.length > 0 || forYouItems.value.length > 0) {
       return `Partial data loaded. ${homeError.value}`
     }
 
     return homeError.value
   }
 
-  if (releases.value.length === 0 && continueWatching.value.length === 0) {
+  if (
+    releases.value.length === 0 &&
+    continueWatching.value.length === 0 &&
+    forYouItems.value.length === 0
+  ) {
     return 'No media available for this account yet.'
   }
 
@@ -748,6 +835,194 @@ const buildContinueItems = (progressEntities: Record<string, unknown>[]): Contin
   return items.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 12)
 }
 
+const getEntityIdentifiers = (entity: Record<string, unknown>): string[] => {
+  const identifiers = new Set<string>()
+  const id = asString(getField(entity, 'id'))
+  if (id) {
+    identifiers.add(id)
+  }
+
+  const documentId = asString(getField(entity, 'documentId'))
+  if (documentId) {
+    identifiers.add(documentId)
+  }
+
+  return [...identifiers]
+}
+
+const getGenreNames = (entity: Record<string, unknown>): string[] => {
+  return getRelationEntities(entity, 'genres')
+    .map((genreEntity) => asString(getField(genreEntity, 'name')))
+    .filter((genreName) => genreName.length > 0)
+}
+
+const buildEpisodePrefix = (seasonNumber: number | null, episodeNumber: number | null): string => {
+  if (seasonNumber !== null && episodeNumber !== null) {
+    return `S${seasonNumber}:E${episodeNumber}`
+  }
+
+  if (episodeNumber !== null) {
+    return `Episode ${episodeNumber}`
+  }
+
+  return 'Episode'
+}
+
+const buildForYouData = (
+  progressEntities: Record<string, unknown>[],
+  movieEntities: Record<string, unknown>[],
+  seriesEntities: Record<string, unknown>[],
+): { items: ForYouItem[]; genres: string[] } => {
+  const genreCounts = new Map<string, number>()
+  const recentItems: ForYouItem[] = []
+  const recentKeys = new Set<string>()
+
+  const movieLookup = new Map<string, Record<string, unknown>>()
+  movieEntities.forEach((movieEntity) => {
+    getEntityIdentifiers(movieEntity).forEach((identifier) => {
+      movieLookup.set(identifier, movieEntity)
+    })
+  })
+
+  type EpisodeLookupEntry = {
+    seriesTitle: string
+    seriesGenres: string[]
+    episodeTitle: string
+    seasonNumber: number | null
+    episodeNumber: number | null
+  }
+
+  const episodeLookup = new Map<string, EpisodeLookupEntry>()
+  seriesEntities.forEach((seriesEntity) => {
+    const seriesTitle = asString(getField(seriesEntity, 'title')) || 'Untitled series'
+    const seriesGenres = getGenreNames(seriesEntity)
+    const seasons = getRelationEntities(seriesEntity, 'seasons')
+
+    seasons.forEach((seasonEntity) => {
+      const seasonNumber = asNumber(getField(seasonEntity, 'number'))
+      const episodes = getRelationEntities(seasonEntity, 'episodes')
+
+      episodes.forEach((episodeEntity) => {
+        const episodeTitle = asString(getField(episodeEntity, 'title')) || 'Untitled episode'
+        const episodeNumber = asNumber(getField(episodeEntity, 'number'))
+        const lookupEntry: EpisodeLookupEntry = {
+          seriesTitle,
+          seriesGenres,
+          episodeTitle,
+          seasonNumber,
+          episodeNumber,
+        }
+
+        getEntityIdentifiers(episodeEntity).forEach((identifier) => {
+          episodeLookup.set(identifier, lookupEntry)
+        })
+      })
+    })
+  })
+
+  progressEntities.forEach((progressEntity) => {
+    const updatedAt =
+      parseTimestamp(getField(progressEntity, 'updatedAt')) ||
+      parseTimestamp(getField(progressEntity, 'createdAt'))
+    const positionSeconds = asNumber(getField(progressEntity, 'positionSeconds')) ?? 0
+    const completed = Boolean(getField(progressEntity, 'completed'))
+    if (positionSeconds <= 0 && !completed) {
+      return
+    }
+
+    const kind = asString(getField(progressEntity, 'kind'))
+
+    if (kind === 'movie') {
+      const movieEntityFromProgress = getRelationEntities(progressEntity, 'movie')[0]
+      if (!movieEntityFromProgress) {
+        return
+      }
+
+      const lookupMovie = getEntityIdentifiers(movieEntityFromProgress)
+        .map((identifier) => movieLookup.get(identifier))
+        .find((entity): entity is Record<string, unknown> => Boolean(entity))
+
+      const mediaId = getEntityIdentifier(movieEntityFromProgress) || getEntityIdentifier(lookupMovie ?? {})
+      if (!mediaId) {
+        return
+      }
+
+      const title =
+        asString(getField(lookupMovie ?? movieEntityFromProgress, 'title')) || 'Untitled movie'
+      const itemKey = `movie:${mediaId}`
+      if (!recentKeys.has(itemKey)) {
+        recentKeys.add(itemKey)
+        recentItems.push({
+          id: itemKey,
+          title,
+          subtitle: completed ? 'Movie • completed' : 'Movie',
+          updatedAt,
+          kind: 'movie',
+          mediaId,
+        })
+      }
+
+      const genres = lookupMovie ? getGenreNames(lookupMovie) : []
+      genres.forEach((genreName) => {
+        genreCounts.set(genreName, (genreCounts.get(genreName) ?? 0) + 1)
+      })
+      return
+    }
+
+    if (kind === 'episode') {
+      const episodeEntityFromProgress = getRelationEntities(progressEntity, 'episode')[0]
+      if (!episodeEntityFromProgress) {
+        return
+      }
+
+      const mediaId = getEntityIdentifier(episodeEntityFromProgress)
+      if (!mediaId) {
+        return
+      }
+
+      const lookupEpisode = getEntityIdentifiers(episodeEntityFromProgress)
+        .map((identifier) => episodeLookup.get(identifier))
+        .find((entry): entry is EpisodeLookupEntry => Boolean(entry))
+
+      if (lookupEpisode) {
+        lookupEpisode.seriesGenres.forEach((genreName) => {
+          genreCounts.set(genreName, (genreCounts.get(genreName) ?? 0) + 1)
+        })
+      }
+
+      const itemKey = `episode:${mediaId}`
+      if (!recentKeys.has(itemKey)) {
+        recentKeys.add(itemKey)
+        const fallbackEpisodeTitle =
+          asString(getField(episodeEntityFromProgress, 'title')) || 'Untitled episode'
+        const title = lookupEpisode?.seriesTitle || fallbackEpisodeTitle
+        const prefix = buildEpisodePrefix(
+          lookupEpisode?.seasonNumber ?? null,
+          lookupEpisode?.episodeNumber ?? asNumber(getField(episodeEntityFromProgress, 'number')),
+        )
+        const episodeTitle = lookupEpisode?.episodeTitle || fallbackEpisodeTitle
+        recentItems.push({
+          id: itemKey,
+          title,
+          subtitle: `${prefix} - ${episodeTitle}${completed ? ' • completed' : ''}`,
+          updatedAt,
+          kind: 'episode',
+          mediaId,
+        })
+      }
+    }
+  })
+
+  const genres = [...genreCounts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .map(([genre]) => genre)
+    .slice(0, 6)
+
+  const items = recentItems.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 6)
+
+  return { items, genres }
+}
+
 const toEntityArray = (response: unknown): Record<string, unknown>[] => {
   const payload = asRecord(response)
   const data = payload?.data
@@ -801,6 +1076,8 @@ const loadHome = async (): Promise<void> => {
   if (!token) {
     releases.value = []
     continueWatching.value = []
+    forYouItems.value = []
+    forYouGenres.value = []
     detectedGenres.value = []
     loadingHome.value = false
     return
@@ -827,6 +1104,9 @@ const loadHome = async (): Promise<void> => {
 
   releases.value = buildReleases(movieEntities, seriesEntities)
   continueWatching.value = buildContinueItems(progressEntities)
+  const forYouData = buildForYouData(progressEntities, movieEntities, seriesEntities)
+  forYouItems.value = forYouData.items
+  forYouGenres.value = forYouData.genres
   detectedGenres.value = collectTopGenres([...movieEntities, ...seriesEntities])
 
   homeError.value = homeErrors.join(' | ')
@@ -922,6 +1202,46 @@ onUnmounted(() => {
         </div>
         <div class="chip-row">
           <button v-for="genre in genres" :key="genre" class="chip">{{ genre }}</button>
+        </div>
+      </section>
+
+      <section :id="FOR_YOU_SECTION_ID" class="section">
+        <div class="section-head">
+          <h3>Pour toi</h3>
+          <a href="#">Personalized</a>
+        </div>
+        <div class="chip-row">
+          <button v-for="genre in personalGenres" :key="`for-you-${genre}`" class="chip">
+            {{ genre }}
+          </button>
+        </div>
+        <div class="for-you-grid">
+          <article
+            v-for="(item, idx) in forYouItems"
+            :key="item.id"
+            class="for-you-card"
+            :style="{ '--delay': `${idx * 70}ms` }"
+          >
+            <div class="continue-line">
+              <h4>{{ item.title }}</h4>
+              <span>{{ formatTimeAgo(item.updatedAt) }}</span>
+            </div>
+            <p>{{ item.subtitle }}</p>
+            <div class="continue-actions">
+              <button
+                type="button"
+                class="continue-resume-btn"
+                :disabled="!item.mediaId"
+                @click="openForYouItem(item)"
+              >
+                Reprendre
+              </button>
+            </div>
+          </article>
+          <article v-if="!loadingHome && forYouItems.length === 0" class="for-you-card empty-card">
+            <h4>No personalized picks yet</h4>
+            <p>Watch a movie or episode to generate your For You section.</p>
+          </article>
         </div>
       </section>
 
