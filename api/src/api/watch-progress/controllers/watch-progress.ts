@@ -6,6 +6,14 @@ import { factories } from '@strapi/strapi';
 
 const WATCH_PROGRESS_UID = 'api::watch-progress.watch-progress';
 const ALLOWED_KINDS = new Set(['movie', 'episode']);
+const DEFAULT_LIST_META = {
+  pagination: {
+    page: 1,
+    pageSize: 0,
+    pageCount: 0,
+    total: 0,
+  },
+};
 
 const hasOwn = (value: unknown, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(value ?? {}, key);
@@ -78,6 +86,14 @@ const parseEntityId = (id: string | number): string | number => {
   return Number.isNaN(numericId) ? id : numericId;
 };
 
+const asPayload = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+};
+
 export default factories.createCoreController(
   WATCH_PROGRESS_UID,
   ({ strapi }) => ({
@@ -87,16 +103,24 @@ export default factories.createCoreController(
         return ctx.unauthorized('Authentication required');
       }
 
+      await this.validateQuery(ctx);
+      const sanitizedQuery = await this.sanitizeQuery(ctx);
       const ownerFilter = { user: { id: { $eq: userId } } };
-
-      ctx.query = {
-        ...ctx.query,
-        filters: ctx.query?.filters
-          ? { $and: [ctx.query.filters, ownerFilter] }
-          : ownerFilter,
+      const queryFilters = (sanitizedQuery as Record<string, unknown>).filters;
+      const query = {
+        ...(sanitizedQuery as Record<string, unknown>),
+        filters: queryFilters ? { $and: [queryFilters, ownerFilter] } : ownerFilter,
       };
 
-      return super.find(ctx);
+      const result = await strapi.service(WATCH_PROGRESS_UID).find(query);
+      const results = Array.isArray(result?.results) ? result.results : [];
+      const sanitizedResults = await this.sanitizeOutput(results, ctx);
+      const pagination =
+        result && typeof result === 'object' && 'pagination' in result
+          ? (result as { pagination?: object }).pagination ?? DEFAULT_LIST_META.pagination
+          : DEFAULT_LIST_META.pagination;
+
+      return this.transformResponse(sanitizedResults, { pagination });
     },
 
     async findOne(ctx) {
@@ -119,7 +143,21 @@ export default factories.createCoreController(
         return ctx.forbidden('You cannot access this watch progress');
       }
 
-      return super.findOne(ctx);
+      await this.validateQuery(ctx);
+      const sanitizedQuery = await this.sanitizeQuery(ctx);
+      const docId = String(
+        normalizeRelationValue((existing as Record<string, unknown>).documentId) ?? id,
+      );
+      const entity = await strapi
+        .service(WATCH_PROGRESS_UID)
+        .findOne(docId, sanitizedQuery as Record<string, unknown>);
+
+      if (!entity) {
+        return ctx.notFound('Watch progress not found');
+      }
+
+      const sanitizedEntity = await this.sanitizeOutput(entity, ctx);
+      return this.transformResponse(sanitizedEntity);
     },
 
     async create(ctx) {
@@ -129,14 +167,17 @@ export default factories.createCoreController(
       }
 
       const body = ctx.request.body ?? {};
-      const data = (body as Record<string, unknown>).data as
-        | Record<string, unknown>
-        | undefined;
-      const payload = data ?? {};
+      const payload = asPayload((body as Record<string, unknown>).data);
 
-      const kind = payload.kind;
-      const movie = normalizeRelationValue(payload.movie);
-      const episode = normalizeRelationValue(payload.episode);
+      await this.validateInput(payload, ctx);
+      const sanitizedPayload = (await this.sanitizeInput(payload, ctx)) as Record<
+        string,
+        unknown
+      >;
+
+      const kind = sanitizedPayload.kind;
+      const movie = normalizeRelationValue(sanitizedPayload.movie);
+      const episode = normalizeRelationValue(sanitizedPayload.episode);
 
       if (typeof kind !== 'string' || !ALLOWED_KINDS.has(kind)) {
         return ctx.badRequest('kind must be either "movie" or "episode"');
@@ -154,15 +195,16 @@ export default factories.createCoreController(
         );
       }
 
-      ctx.request.body = {
-        ...body,
+      const created = await strapi.db.query(WATCH_PROGRESS_UID).create({
         data: {
-          ...payload,
+          ...sanitizedPayload,
           user: userId,
         },
-      };
+      });
 
-      return super.create(ctx);
+      const sanitizedEntity = await this.sanitizeOutput(created, ctx);
+      ctx.status = 201;
+      return this.transformResponse(sanitizedEntity);
     },
 
     async update(ctx) {
@@ -186,24 +228,27 @@ export default factories.createCoreController(
       }
 
       const body = ctx.request.body ?? {};
-      const data = (body as Record<string, unknown>).data as
-        | Record<string, unknown>
-        | undefined;
-      const payload = data ?? {};
+      const payload = asPayload((body as Record<string, unknown>).data);
+
+      await this.validateInput(payload, ctx);
+      const sanitizedPayload = (await this.sanitizeInput(payload, ctx)) as Record<
+        string,
+        unknown
+      >;
 
       const nextKind =
-        typeof payload.kind === 'string' ? payload.kind : existing.kind;
+        typeof sanitizedPayload.kind === 'string' ? sanitizedPayload.kind : existing.kind;
 
       if (!ALLOWED_KINDS.has(nextKind)) {
         return ctx.badRequest('kind must be either "movie" or "episode"');
       }
 
-      const nextMovie = hasOwn(payload, 'movie')
-        ? normalizeRelationValue(payload.movie)
+      const nextMovie = hasOwn(sanitizedPayload, 'movie')
+        ? normalizeRelationValue(sanitizedPayload.movie)
         : normalizeRelationValue(existing.movie);
 
-      const nextEpisode = hasOwn(payload, 'episode')
-        ? normalizeRelationValue(payload.episode)
+      const nextEpisode = hasOwn(sanitizedPayload, 'episode')
+        ? normalizeRelationValue(sanitizedPayload.episode)
         : normalizeRelationValue(existing.episode);
 
       if (nextKind === 'movie' && (!hasRelation(nextMovie) || hasRelation(nextEpisode))) {
@@ -218,15 +263,20 @@ export default factories.createCoreController(
         );
       }
 
-      ctx.request.body = {
-        ...body,
+      const updated = await strapi.db.query(WATCH_PROGRESS_UID).update({
+        where: { id },
         data: {
-          ...payload,
+          ...sanitizedPayload,
           user: userId,
         },
-      };
+      });
 
-      return super.update(ctx);
+      if (!updated) {
+        return ctx.notFound('Watch progress not found');
+      }
+
+      const sanitizedEntity = await this.sanitizeOutput(updated, ctx);
+      return this.transformResponse(sanitizedEntity);
     },
 
     async delete(ctx) {
