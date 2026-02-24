@@ -142,17 +142,48 @@ const links: NavLink[] = [
   { label: 'Logout', action: 'logout' },
 ]
 
-const authToken = ref<string | null>(findAuthToken())
+const authToken = ref<string | null>(null)
+const authReady = ref(false)
 const pendingRedirectPath = ref<string | null>(null)
 const FOR_YOU_SECTION_ID = 'for-you-section'
+const LOGIN_ROUTE: AppRoute = {
+  name: 'login',
+  movieId: null,
+  seriesId: null,
+  playerKind: null,
+  playerId: null,
+}
 
 const currentRoute = ref<AppRoute>(
-  typeof window === 'undefined'
-    ? { name: 'login', movieId: null, seriesId: null, playerKind: null, playerId: null }
-    : resolveRoute(window.location.pathname),
+  (() => {
+    if (typeof window === 'undefined') {
+      return LOGIN_ROUTE
+    }
+
+    const requestedRoute = resolveRoute(window.location.pathname)
+
+    if (!authToken.value && isProtectedRoute(requestedRoute)) {
+      pendingRedirectPath.value = routeToPath(requestedRoute)
+      if (window.location.pathname !== '/login') {
+        window.history.replaceState({}, '', '/login')
+      }
+      return LOGIN_ROUTE
+    }
+
+    if (authToken.value && requestedRoute.name === 'login') {
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({}, '', '/')
+      }
+      return { name: 'home', movieId: null, seriesId: null, playerKind: null, playerId: null }
+    }
+
+    return requestedRoute
+  })(),
 )
 
 const isLoginRoute = computed(() => currentRoute.value.name === 'login')
+const isAuthenticated = computed(() => Boolean(authToken.value))
+const shouldShowLogin = computed(() => !authReady.value || !isAuthenticated.value || isLoginRoute.value)
 const isCatalogRoute = computed(() => currentRoute.value.name === 'catalog')
 const isHomeRoute = computed(() => currentRoute.value.name === 'home')
 const isMovieRoute = computed(() => currentRoute.value.name === 'movie')
@@ -162,10 +193,42 @@ const currentMovieId = computed(() => currentRoute.value.movieId)
 const currentSeriesId = computed(() => currentRoute.value.seriesId)
 const currentPlayerKind = computed<PlayerKind>(() => currentRoute.value.playerKind ?? 'movie')
 const currentPlayerId = computed(() => currentRoute.value.playerId ?? '')
-const showTopbar = computed(() => !isLoginRoute.value)
+const showTopbar = computed(() => isAuthenticated.value && !isLoginRoute.value)
+
+const bootstrapAuthSession = async (): Promise<void> => {
+  const storedToken = findAuthToken()
+
+  if (!storedToken) {
+    authToken.value = null
+    authReady.value = true
+    syncRouteFromLocation()
+    return
+  }
+
+  try {
+    await streamyApi.getMe({ token: storedToken })
+    authToken.value = storedToken
+  } catch {
+    clearAuthToken()
+    authToken.value = null
+  } finally {
+    authReady.value = true
+  }
+
+  if (authToken.value && pendingRedirectPath.value && typeof window !== 'undefined') {
+    window.history.replaceState({}, '', pendingRedirectPath.value)
+    pendingRedirectPath.value = null
+  }
+
+  syncRouteFromLocation()
+}
 
 const syncRouteFromLocation = (): void => {
   if (typeof window === 'undefined') {
+    return
+  }
+
+  if (!authReady.value) {
     return
   }
 
@@ -374,6 +437,7 @@ const isActiveRoute = (route?: '/' | '/catalog' | '/login'): boolean => {
 const handleLoginSuccess = (token: string): void => {
   setAuthToken(token)
   authToken.value = token
+  authReady.value = true
 
   const destination = pendingRedirectPath.value ?? '/'
   pendingRedirectPath.value = null
@@ -393,6 +457,7 @@ const handleLoginSuccess = (token: string): void => {
 const logout = (): void => {
   clearAuthToken()
   authToken.value = null
+  authReady.value = true
   pendingRedirectPath.value = null
   releases.value = []
   continueWatching.value = []
@@ -1070,8 +1135,7 @@ const loadHome = async (): Promise<void> => {
   loadingHome.value = true
   homeError.value = ''
 
-  const token = findAuthToken()
-  authToken.value = token
+  const token = authToken.value
 
   if (!token) {
     releases.value = []
@@ -1120,12 +1184,9 @@ const loadHome = async (): Promise<void> => {
 onMounted(() => {
   if (typeof window !== 'undefined') {
     window.addEventListener('popstate', syncRouteFromLocation)
-    syncRouteFromLocation()
   }
 
-  if (currentRoute.value.name === 'home' && !loadingHome.value) {
-    void loadHome()
-  }
+  void bootstrapAuthSession()
 })
 
 onUnmounted(() => {
@@ -1159,7 +1220,7 @@ onUnmounted(() => {
       <button class="ghost-btn">Premium</button>
     </header>
 
-    <LoginView v-if="isLoginRoute" @login-success="handleLoginSuccess" />
+    <LoginView v-if="shouldShowLogin" @login-success="handleLoginSuccess" />
 
     <main v-else-if="isHomeRoute" class="layout">
       <section class="hero reveal-1">
