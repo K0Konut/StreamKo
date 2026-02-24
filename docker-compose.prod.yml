@@ -1,0 +1,40 @@
+services:
+  streamko-web:
+    container_name: streamko-web
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    networks:
+      - npm
+
+  streamko-api:
+    container_name: streamko-api
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    env_file:
+      - ./api/.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 1337
+      DATABASE_CLIENT: sqlite
+      DATABASE_FILENAME: /opt/app/.tmp/data.db
+    volumes:
+      - streamko_api_data:/opt/app/.tmp
+      - streamko_api_uploads:/opt/app/public/uploads
+    restart: unless-stopped
+    networks:
+      - npm
+
+volumes:
+  streamko_api_data:
+  streamko_api_uploads:
+
+networks:
+  npm:
+    external: true
+
