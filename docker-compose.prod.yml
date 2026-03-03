@@ -24,17 +24,15 @@ services:
       DATABASE_CLIENT: sqlite
       DATABASE_FILENAME: /opt/app/.tmp/data.db
     volumes:
-      - streamko_api_data:/opt/app/.tmp
-      - streamko_api_uploads:/opt/app/public/uploads
+      - ${STREAMKO_API_DATA_PATH:-streamko_api_data}:/opt/app/.tmp
+      - ${STREAMKO_API_UPLOADS_PATH:?Set STREAMKO_API_UPLOADS_PATH to a mounted HDD path}:/opt/app/public/uploads
     restart: unless-stopped
     networks:
       - npm
 
 volumes:
   streamko_api_data:
-  streamko_api_uploads:
 
 networks:
   npm:
     external: true
-

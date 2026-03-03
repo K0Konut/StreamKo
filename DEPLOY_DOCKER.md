@@ -8,7 +8,7 @@ Ce projet est prévu pour tourner sur ta VM Docker unique avec `nginx-proxy-mana
 docker network create npm 2>/dev/null || true
 ```
 
-## 2) Variables front
+## 2) Variables front + compose
 
 A la racine du projet, creer `.env.production` :
 
@@ -22,6 +22,22 @@ Par defaut :
 VITE_API_URL=https://api.costamask.dev
 ```
 
+Obligatoire pour la prod : binder les uploads Strapi sur le HDD monte de la VM.
+
+Exemple a ajouter dans `.env.production` :
+
+```env
+STREAMKO_API_UPLOADS_PATH=/mnt/hdd5to/streamko/uploads
+# optionnel (si tu veux aussi sortir SQLite de la VM)
+STREAMKO_API_DATA_PATH=/mnt/hdd5to/streamko/api-data
+```
+
+Puis creer les dossiers :
+
+```bash
+mkdir -p /mnt/hdd5to/streamko/api-data /mnt/hdd5to/streamko/uploads
+```
+
 ## 3) Variables Strapi
 
 Dans `api/.env`, configure des secrets de prod (ne jamais commiter) :
@@ -33,10 +49,14 @@ Dans `api/.env`, configure des secrets de prod (ne jamais commiter) :
 - `JWT_SECRET`
 - `ENCRYPTION_KEY`
 
-La stack force SQLite avec volume persistant :
+La stack force SQLite avec stockage persistant :
 
 - `DATABASE_CLIENT=sqlite`
 - `DATABASE_FILENAME=/opt/app/.tmp/data.db` (override via compose)
+
+`docker-compose.prod.yml` impose `STREAMKO_API_UPLOADS_PATH` (fail fast si non defini),
+pour eviter que les videos partent sur le disque de la VM.
+`STREAMKO_API_DATA_PATH` reste optionnel (volume nomme par defaut).
 
 ## 4) Build + run
 
