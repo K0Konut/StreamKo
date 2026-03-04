@@ -62,7 +62,7 @@ const detailStatus = computed(() => {
   }
 
   if (!movie.value.videoUrl) {
-    return 'No video linked for this movie yet.'
+    return 'No video source linked for this movie yet.'
   }
 
   if (shouldResume.value) {
@@ -198,7 +198,14 @@ const toMovieDetail = (entity: Record<string, unknown>): MovieDetail | null => {
     .filter((personName) => personName.length > 0)
 
   const videoEntity = getRelationEntities(entity, 'video')[0]
-  const videoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+  const rawVideoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+  const videoHash = videoEntity ? asString(getField(videoEntity, 'hash')) : ''
+  const safeVideoHash = videoHash.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const videoExt = videoEntity ? asString(getField(videoEntity, 'ext')).toLowerCase() : ''
+  const videoMime = videoEntity ? asString(getField(videoEntity, 'mime')).toLowerCase() : ''
+  const uploadedHls = videoExt === '.m3u8' || videoMime.includes('mpegurl')
+  const hlsUrl = !uploadedHls && safeVideoHash ? toAbsoluteMediaUrl(`/uploads/hls/${safeVideoHash}/master.m3u8`) : ''
+  const videoUrl = hlsUrl || rawVideoUrl
 
   return {
     id: getEntityId(entity),
@@ -401,7 +408,7 @@ watch(
       <div class="movie-video-block">
         <p class="movie-video-title">Video source</p>
         <p class="movie-muted-copy">
-          {{ movie?.videoUrl ? 'MP4 is linked and ready for player route.' : 'No MP4 linked in Strapi.' }}
+          {{ movie?.videoUrl ? 'Video source is linked and ready for player route.' : 'No video source linked in Strapi.' }}
         </p>
       </div>
     </section>

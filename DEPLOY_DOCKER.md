@@ -48,6 +48,10 @@ Dans `api/.env`, configure des secrets de prod (ne jamais commiter) :
 - `TRANSFER_TOKEN_SALT`
 - `JWT_SECRET`
 - `ENCRYPTION_KEY`
+- `HLS_TRANSCODE_ENABLED=true` (optionnel, laisse active la conversion auto MP4 -> HLS)
+
+La conversion HLS utilise `ffmpeg`/`ffprobe` (installes dans l'image `api/Dockerfile`).
+Attention: les premieres conversions peuvent consommer du CPU apres upload.
 
 La stack force SQLite avec stockage persistant :
 

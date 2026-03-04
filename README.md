@@ -18,7 +18,7 @@ Créer une plateforme de streaming privée (toi + amis, comptes gérés par l'ad
 - Gestion des contenus via Strapi (admin)
 - Catalogue + filtres de base
 - Pages détails (film / série)
-- Player (MP4) + reprise de lecture
+- Player (HLS) + reprise de lecture
 - Watch progress par utilisateur (films + épisodes)
 - Déploiement sous ton domaine (front + api)
 
@@ -70,7 +70,7 @@ Créer une plateforme de streaming privée (toi + amis, comptes gérés par l'ad
 - Bouton principal: `Reprendre` (dernier épisode/position) si progress existe, sinon `Lire` (par défaut S1E1)
 
 ### Player
-- Lecture MP4 dans `<video>`
+- Lecture HLS (generee automatiquement a partir des uploads video) dans `<video>`
 - Sauvegarde du progress automatique
 - Reprise: seek au timecode sauvegardé au chargement
 - Fin: marque `completed` si la fin est atteinte
@@ -84,8 +84,8 @@ Créer une plateforme de streaming privée (toi + amis, comptes gérés par l'ad
 
 ### Gestion contenus (admin)
 - Ajout films/séries/épisodes via Strapi
-- Upload MP4 via Media Library Strapi
-- Chaque film/épisode doit avoir un MP4 associé (sinon état "non disponible")
+- Upload video source (MP4 recommande) via Media Library Strapi
+- Chaque film/épisode doit avoir une video source associee (sinon état "non disponible")
 
 ### Watch progress
 - Stockage par utilisateur et par média (film ou épisode)
@@ -161,9 +161,10 @@ Créer une plateforme de streaming privée (toi + amis, comptes gérés par l'ad
 - Desktop + mobile
 - Chrome / Firefox / Safari récents
 
-### Streaming MP4 (contraintes)
-- Le serveur doit accepter les HTTP Range Requests (seek fiable)
-- Validation obligatoire sur l'hébergement cible (Nginx/Apache/CDN)
+### Streaming HLS (contraintes)
+- Le backend Strapi doit avoir `ffmpeg` + `ffprobe` installes pour generer les playlists HLS
+- Les manifests et segments HLS sont ecrits dans `public/uploads/hls/<media-hash>/`
+- Validation obligatoire sur l'hebergement cible (Nginx/Apache/CDN): acces `.m3u8` + segments `.ts`
 
 ## Déploiement sous ton domaine (architecture)
 ### Sous-domaines recommandés
@@ -218,9 +219,9 @@ Cette checklist est bloquante avant d'annoncer que le backend est "stable".
 - [ ] Validation testée avec 2 comptes distincts
 
 ### 4) Média & streaming
-- [ ] Upload MP4 fonctionnel dans Strapi Media Library
+- [ ] Upload video source fonctionnel dans Strapi Media Library
+- [ ] Conversion HLS automatique fonctionnelle (presence de `master.m3u8` dans `uploads/hls/<hash>/`)
 - [ ] Les URLs vidéo sont retournées dans les réponses API (`populate=video`)
-- [ ] Le serveur accepte bien les Range Requests
 
 ### 5) Smoke tests minimaux (à exécuter)
 - [ ] Login -> token JWT

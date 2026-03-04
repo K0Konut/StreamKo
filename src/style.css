@@ -271,6 +271,8 @@ a {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
   font-size: 0.85rem;
   color: var(--ink-500);
 }
@@ -321,12 +323,16 @@ a {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.75rem;
   margin: 0.4rem 0 0.8rem;
 }
 
 .section-head h3 {
   margin: 0;
   font-size: 1.03rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .section-head a {
@@ -400,6 +406,8 @@ a {
   margin-top: 0.65rem;
   display: flex;
   justify-content: space-between;
+  gap: 0.45rem;
+  flex-wrap: wrap;
   font-size: 0.78rem;
   color: var(--ink-500);
 }
@@ -407,6 +415,7 @@ a {
 .media-card h4 {
   margin: 0.45rem 0 0.2rem;
   font-size: 1rem;
+  overflow-wrap: anywhere;
 }
 
 .media-card p {
@@ -496,7 +505,7 @@ a {
 
 .continue-line {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.4rem;
 }
@@ -504,24 +513,30 @@ a {
 .continue-line h4 {
   margin: 0;
   font-size: 0.98rem;
+  min-width: 0;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .continue-line span {
   color: var(--amber);
   font-weight: 600;
   font-size: 0.82rem;
+  flex-shrink: 0;
 }
 
 .continue-card p {
   margin: 0.4rem 0 0.6rem;
   color: var(--ink-500);
   font-size: 0.86rem;
+  overflow-wrap: anywhere;
 }
 
 .for-you-card p {
   margin: 0.4rem 0 0.6rem;
   color: var(--ink-500);
   font-size: 0.86rem;
+  overflow-wrap: anywhere;
 }
 
 .continue-actions {
@@ -1089,15 +1104,55 @@ a {
 }
 
 @media (max-width: 560px) {
+  .topbar {
+    padding: 0.7rem 0.8rem;
+    gap: 0.65rem;
+  }
+
+  .ghost-btn {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.82rem;
+  }
+
   .nav-links {
     width: 100%;
     order: 3;
-    justify-content: space-between;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
     font-size: 0.84rem;
+  }
+
+  .nav-links a {
+    flex: 1 1 calc(50% - 0.25rem);
+    text-align: center;
   }
 
   .hero {
     padding: 1.35rem;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-actions .primary-btn,
+  .hero-actions .secondary-btn {
+    width: 100%;
+  }
+
+  .panel-card {
+    grid-template-columns: 70px 1fr;
+    padding: 0.65rem;
+    gap: 0.65rem;
+  }
+
+  .poster {
+    width: 70px;
+  }
+
+  .section-head a {
+    font-size: 0.8rem;
   }
 
   .rail {

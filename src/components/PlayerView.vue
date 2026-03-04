@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import type Hls from 'hls.js'
 
 import { findAuthToken } from '../lib/authToken'
 import { StrapiRequestError } from '../lib/strapiClient'
@@ -52,9 +53,26 @@ const autosaveTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const autoplayError = ref('')
 
 const videoRef = ref<HTMLVideoElement | null>(null)
+const hlsInstance = ref<Hls | null>(null)
+let sourceSetupToken = 0
+let hlsModulePromise: Promise<typeof import('hls.js')> | null = null
 
 const canPlay = computed(() => Boolean(media.value?.videoUrl))
 const shouldResume = computed(() => !progressCompleted.value && progressPosition.value > 30)
+const isHlsStream = computed(() => {
+  const sourceUrl = media.value?.videoUrl
+  if (!sourceUrl) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(sourceUrl, API_ORIGIN)
+    return parsed.pathname.toLowerCase().endsWith('.m3u8')
+  } catch {
+    const pathWithoutQuery = sourceUrl.toLowerCase().split('?').shift() ?? ''
+    return pathWithoutQuery.endsWith('.m3u8')
+  }
+})
 
 const progressPercent = computed(() => {
   if (progressCompleted.value) {
@@ -101,7 +119,9 @@ const playerStatus = computed(() => {
   }
 
   if (!media.value.videoUrl) {
-    return props.kind === 'movie' ? 'No MP4 linked for this movie yet.' : 'No MP4 linked for this episode yet.'
+    return props.kind === 'movie'
+      ? 'No video source linked for this movie yet.'
+      : 'No video source linked for this episode yet.'
   }
 
   if (progressCompleted.value) {
@@ -258,7 +278,14 @@ const toMovieMedia = (entity: Record<string, unknown>): PlayerMedia | null => {
   }
 
   const videoEntity = getRelationEntities(entity, 'video')[0]
-  const videoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+  const rawVideoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+  const videoHash = videoEntity ? asString(getField(videoEntity, 'hash')) : ''
+  const safeVideoHash = videoHash.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const videoExt = videoEntity ? asString(getField(videoEntity, 'ext')).toLowerCase() : ''
+  const videoMime = videoEntity ? asString(getField(videoEntity, 'mime')).toLowerCase() : ''
+  const uploadedHls = videoExt === '.m3u8' || videoMime.includes('mpegurl')
+  const hlsUrl = !uploadedHls && safeVideoHash ? toAbsoluteMediaUrl(`/uploads/hls/${safeVideoHash}/master.m3u8`) : ''
+  const videoUrl = hlsUrl || rawVideoUrl
 
   return {
     id,
@@ -308,7 +335,14 @@ const toEpisodeMedia = (entity: Record<string, unknown>): PlayerMedia | null => 
   const chapter = episodeTitle ? `${chapterPrefix} - ${episodeTitle}` : chapterPrefix
 
   const videoEntity = getRelationEntities(entity, 'video')[0]
-  const videoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+  const rawVideoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+  const videoHash = videoEntity ? asString(getField(videoEntity, 'hash')) : ''
+  const safeVideoHash = videoHash.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const videoExt = videoEntity ? asString(getField(videoEntity, 'ext')).toLowerCase() : ''
+  const videoMime = videoEntity ? asString(getField(videoEntity, 'mime')).toLowerCase() : ''
+  const uploadedHls = videoExt === '.m3u8' || videoMime.includes('mpegurl')
+  const hlsUrl = !uploadedHls && safeVideoHash ? toAbsoluteMediaUrl(`/uploads/hls/${safeVideoHash}/master.m3u8`) : ''
+  const videoUrl = hlsUrl || rawVideoUrl
 
   return {
     id: episodeId,
@@ -424,6 +458,113 @@ const stopAutosave = (): void => {
 
   clearInterval(autosaveTimer.value)
   autosaveTimer.value = null
+}
+
+const destroyHlsInstance = (): void => {
+  if (!hlsInstance.value) {
+    return
+  }
+
+  hlsInstance.value.destroy()
+  hlsInstance.value = null
+}
+
+const clearHlsPlaybackError = (): void => {
+  if (
+    playerError.value.startsWith('HLS ') ||
+    playerError.value.startsWith('This browser cannot play HLS streams') ||
+    playerError.value.startsWith('Failed to initialize HLS playback')
+  ) {
+    playerError.value = ''
+  }
+}
+
+const loadHlsModule = (): Promise<typeof import('hls.js')> => {
+  if (!hlsModulePromise) {
+    hlsModulePromise = import('hls.js')
+  }
+
+  return hlsModulePromise
+}
+
+const setVideoSource = async (): Promise<void> => {
+  const setupToken = ++sourceSetupToken
+  const video = videoRef.value
+  const sourceUrl = media.value?.videoUrl
+
+  destroyHlsInstance()
+
+  if (!video) {
+    return
+  }
+
+  if (!sourceUrl) {
+    video.removeAttribute('src')
+    video.load()
+    return
+  }
+
+  if (!isHlsStream.value) {
+    clearHlsPlaybackError()
+    video.src = sourceUrl
+    video.load()
+    return
+  }
+
+  const nativeHlsSupport = video.canPlayType('application/vnd.apple.mpegurl')
+  if (nativeHlsSupport === 'probably' || nativeHlsSupport === 'maybe') {
+    clearHlsPlaybackError()
+    video.src = sourceUrl
+    video.load()
+    return
+  }
+
+  try {
+    const hlsModule = await loadHlsModule()
+    if (setupToken !== sourceSetupToken) {
+      return
+    }
+
+    const HlsPlayer = hlsModule.default
+    if (!HlsPlayer.isSupported()) {
+      playerError.value = 'This browser cannot play HLS streams. Try Safari/iOS or use an MP4 source.'
+      video.removeAttribute('src')
+      video.load()
+      return
+    }
+
+    const instance = new HlsPlayer({
+      enableWorker: true,
+      lowLatencyMode: false,
+    })
+
+    hlsInstance.value = instance
+    instance.attachMedia(video)
+
+    instance.on(HlsPlayer.Events.MEDIA_ATTACHED, () => {
+      instance.loadSource(sourceUrl)
+    })
+
+    instance.on(HlsPlayer.Events.ERROR, (_event, data) => {
+      if (!data.fatal) {
+        return
+      }
+
+      if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
+        playerError.value = 'HLS network error while loading the stream.'
+      } else if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR) {
+        playerError.value = 'HLS media error. Source may be corrupted or codec is unsupported.'
+      } else {
+        playerError.value = 'HLS playback failed on this browser.'
+      }
+
+      destroyHlsInstance()
+    })
+  } catch {
+    playerError.value = 'Failed to initialize HLS playback on this browser.'
+    video.removeAttribute('src')
+    video.load()
+  }
 }
 
 const saveProgress = async (force: boolean, completedOverride?: boolean): Promise<void> => {
@@ -774,6 +915,14 @@ watch(
   { immediate: true },
 )
 
+watch(
+  [() => media.value?.videoUrl, () => videoRef.value],
+  () => {
+    void setVideoSource()
+  },
+  { flush: 'post' },
+)
+
 onMounted(() => {
   if (typeof window === 'undefined') {
     return
@@ -783,7 +932,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  sourceSetupToken += 1
   stopAutosave()
+  destroyHlsInstance()
 
   if (typeof window !== 'undefined') {
     window.removeEventListener('pagehide', onPageHide)
@@ -811,7 +962,7 @@ onUnmounted(() => {
         {{
           media?.synopsis ||
           (props.kind === 'movie'
-            ? 'Play the linked MP4 file and progress will be synced to Strapi.'
+            ? 'Play the linked HLS or MP4 source and progress will be synced to Strapi.'
             : 'Play this episode and progress will be synced to Strapi.')
         }}
       </p>
@@ -826,7 +977,6 @@ onUnmounted(() => {
           controls
           preload="metadata"
           playsinline
-          :src="media.videoUrl"
           @loadedmetadata="onLoadedMetadata"
           @play="onVideoPlay"
           @pause="onVideoPause"
@@ -834,7 +984,7 @@ onUnmounted(() => {
           @error="onVideoError"
         ></video>
         <a v-if="media?.videoUrl" class="player-source-link" :href="media.videoUrl" target="_blank" rel="noopener">
-          Open raw video URL
+          Open raw {{ isHlsStream ? 'HLS' : 'video' }} URL
         </a>
         <p v-else class="movie-muted-copy">
           {{ props.kind === 'movie' ? 'No video source available for this movie.' : 'No video source available for this episode.' }}
