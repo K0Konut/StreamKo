@@ -90,9 +90,24 @@ const normalizeExt = (value: string): string => {
   return normalized.startsWith('.') ? normalized : `.${normalized}`;
 };
 
+const detectFileExtension = (file: UploadFileRecord): string => {
+  const extFromField = normalizeExt(file.ext || '');
+  if (extFromField) {
+    return extFromField;
+  }
+
+  const urlPath = (file.url || '').split('?').shift() || '';
+  const extFromUrl = normalizeExt(path.extname(urlPath));
+  if (extFromUrl) {
+    return extFromUrl;
+  }
+
+  return normalizeExt(path.extname(file.name || ''));
+};
+
 const isPlayableVideoFile = (file: UploadFileRecord): boolean => {
   const url = (file.url || '').trim();
-  const ext = normalizeExt(file.ext || '');
+  const ext = detectFileExtension(file);
   const mime = (file.mime || '').trim().toLowerCase();
 
   if (!url.startsWith('/uploads/')) {
