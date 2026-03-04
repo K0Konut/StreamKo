@@ -137,7 +137,7 @@ const detailStatus = computed(() => {
   }
 
   if (!selectedEpisode.value?.videoUrl) {
-    return 'No video linked for the selected episode.'
+    return 'No video source linked for the selected episode.'
   }
 
   return 'Ready to start.'
@@ -471,9 +471,14 @@ const loadSeriesDetail = async (): Promise<void> => {
             const episodeNumber = asNumber(getField(episodeEntity, 'number'))
             const episodeTitle = asString(getField(episodeEntity, 'title'))
             const videoEntity = getRelationEntities(episodeEntity, 'video')[0]
-            const videoUrl = videoEntity
-              ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) || null
-              : null
+            const rawVideoUrl = videoEntity ? toAbsoluteMediaUrl(asString(getField(videoEntity, 'url'))) : ''
+            const videoHash = videoEntity ? asString(getField(videoEntity, 'hash')) : ''
+            const safeVideoHash = videoHash.replace(/[^a-zA-Z0-9_-]/g, '_')
+            const videoExt = videoEntity ? asString(getField(videoEntity, 'ext')).toLowerCase() : ''
+            const videoMime = videoEntity ? asString(getField(videoEntity, 'mime')).toLowerCase() : ''
+            const uploadedHls = videoExt === '.m3u8' || videoMime.includes('mpegurl')
+            const hlsUrl = !uploadedHls && safeVideoHash ? toAbsoluteMediaUrl(`/uploads/hls/${safeVideoHash}/master.m3u8`) : ''
+            const videoUrl = hlsUrl || rawVideoUrl || null
 
             const episodeIdentifiers = buildEpisodeIdentifiers(episodeEntity)
             const matchingProgress = progressEntities
@@ -685,7 +690,7 @@ watch(
             selectedEpisode
               ? selectedEpisode.videoUrl
                 ? `${selectedEpisode.chapter} is ready for playback.`
-                : `${selectedEpisode.chapter} has no MP4 linked.`
+                : `${selectedEpisode.chapter} has no video source linked.`
               : 'Select an episode to start.'
           }}
         </p>

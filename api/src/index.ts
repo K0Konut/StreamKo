@@ -1,4 +1,5 @@
 import type { Core } from '@strapi/strapi';
+import { createHlsTranscodeManager } from './utils/hlsTranscodeManager';
 
 type PermissionAction = {
   enabled: boolean;
@@ -38,6 +39,8 @@ const AUTHENTICATED_ALLOWED_ACTIONS = [
 ];
 
 const PUBLIC_ALLOWED_ACTIONS = ['plugin::users-permissions.auth.callback'];
+
+let hlsTranscodeManager: ReturnType<typeof createHlsTranscodeManager> | null = null;
 
 const parsePermissionAction = (action: string): [string, string, string] | null => {
   const match = action.match(/^((?:api|plugin)::[^.]+)\.([^.]+)\.([^.]+)$/);
@@ -129,5 +132,15 @@ export default {
   async bootstrap({ strapi }: { strapi: Core.Strapi }) {
     await syncRolePermissions(strapi, 'authenticated', AUTHENTICATED_ALLOWED_ACTIONS);
     await syncRolePermissions(strapi, 'public', PUBLIC_ALLOWED_ACTIONS);
+
+    hlsTranscodeManager = createHlsTranscodeManager(strapi);
+    await hlsTranscodeManager.init();
+  },
+
+  destroy() {
+    if (hlsTranscodeManager && typeof hlsTranscodeManager.destroy === 'function') {
+      hlsTranscodeManager.destroy();
+    }
+    hlsTranscodeManager = null;
   },
 };
