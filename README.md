@@ -239,4 +239,4 @@ Cette checklist est bloquante avant d'annoncer que le backend est "stable".
 ## Note de migration (2026-03-05)
 - Schema `movie` modifie: ajout du champ `imdbId` (string, unique, optionnel).
 - Nouveau endpoint backend: `POST /api/movies/import-imdb` pour creer/mettre a jour un film via `imdbId`.
-- Nouvelle variable env backend optionnelle: `OMDB_API_KEY`.
+- Nouvelles variables env backend: `OMDB_API_KEY` + verrouillage owner (`OWNER_USER_ID` ou `OWNER_USER_EMAIL`).

@@ -5,7 +5,7 @@ export default {
       path: '/movies/import-imdb',
       handler: 'movie.importFromImdb',
       config: {
-        policies: [],
+        policies: ['global::owner-only'],
       },
     },
   ],
