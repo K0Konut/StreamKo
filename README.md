@@ -86,6 +86,7 @@ Créer une plateforme de streaming privée (toi + amis, comptes gérés par l'ad
 - Ajout films/séries/épisodes via Strapi
 - Upload video source (MP4 recommande) via Media Library Strapi
 - Chaque film/épisode doit avoir une video source associee (sinon état "non disponible")
+- Si `imdbId` est renseigne sur un film puis sauvegarde par le proprietaire, le backend complete automatiquement `title`, `year`, `synopsis`, `genres`, `cast`.
 
 ### Watch progress
 - Stockage par utilisateur et par média (film ou épisode)
@@ -239,4 +240,4 @@ Cette checklist est bloquante avant d'annoncer que le backend est "stable".
 ## Note de migration (2026-03-05)
 - Schema `movie` modifie: ajout du champ `imdbId` (string, unique, optionnel).
 - Nouveau endpoint backend: `POST /api/movies/import-imdb` pour creer/mettre a jour un film via `imdbId`.
-- Nouvelles variables env backend: `OMDB_API_KEY` + verrouillage owner (`OWNER_USER_ID` ou `OWNER_USER_EMAIL`).
+- Nouvelles variables env backend: `OMDB_API_KEY` + verrouillage owner (`OWNER_USER_ID` ou `OWNER_ADMIN_USER_ID` ou `OWNER_USER_EMAIL`).
