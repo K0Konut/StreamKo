@@ -19,6 +19,7 @@ type PlayerMedia = {
   year: number | null
   synopsis: string
   videoUrl: string | null
+  rawVideoUrl: string | null
   chapter: string | null
   backTarget: PlayerBackTarget
 }
@@ -54,13 +55,26 @@ const autoplayError = ref('')
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const hlsInstance = ref<Hls | null>(null)
+const usingRawFallback = ref(false)
 let sourceSetupToken = 0
 let hlsModulePromise: Promise<typeof import('hls.js')> | null = null
 
-const canPlay = computed(() => Boolean(media.value?.videoUrl))
+const activeVideoUrl = computed(() => {
+  if (!media.value) {
+    return ''
+  }
+
+  if (usingRawFallback.value && media.value.rawVideoUrl) {
+    return media.value.rawVideoUrl
+  }
+
+  return media.value.videoUrl || media.value.rawVideoUrl || ''
+})
+
+const canPlay = computed(() => Boolean(activeVideoUrl.value))
 const shouldResume = computed(() => !progressCompleted.value && progressPosition.value > 30)
 const isHlsStream = computed(() => {
-  const sourceUrl = media.value?.videoUrl
+  const sourceUrl = activeVideoUrl.value
   if (!sourceUrl) {
     return false
   }
@@ -118,10 +132,14 @@ const playerStatus = computed(() => {
     return props.kind === 'movie' ? 'Movie not found.' : 'Episode not found.'
   }
 
-  if (!media.value.videoUrl) {
+  if (!activeVideoUrl.value) {
     return props.kind === 'movie'
       ? 'No video source linked for this movie yet.'
       : 'No video source linked for this episode yet.'
+  }
+
+  if (usingRawFallback.value) {
+    return 'HLS stream is not ready yet. Playing MP4 fallback.'
   }
 
   if (progressCompleted.value) {
@@ -294,6 +312,7 @@ const toMovieMedia = (entity: Record<string, unknown>): PlayerMedia | null => {
     year: asNumber(getField(entity, 'year')),
     synopsis: asString(getField(entity, 'synopsis')),
     videoUrl: videoUrl || null,
+    rawVideoUrl: rawVideoUrl || null,
     chapter: null,
     backTarget: {
       kind: 'movie',
@@ -353,6 +372,7 @@ const toEpisodeMedia = (entity: Record<string, unknown>): PlayerMedia | null => 
       asString(getField(entity, 'synopsis')) ||
       (seriesEntity ? asString(getField(seriesEntity, 'synopsis')) : ''),
     videoUrl: videoUrl || null,
+    rawVideoUrl: rawVideoUrl || null,
     chapter,
     backTarget: {
       kind: 'series',
@@ -490,7 +510,7 @@ const loadHlsModule = (): Promise<typeof import('hls.js')> => {
 const setVideoSource = async (): Promise<void> => {
   const setupToken = ++sourceSetupToken
   const video = videoRef.value
-  const sourceUrl = media.value?.videoUrl
+  const sourceUrl = activeVideoUrl.value
 
   destroyHlsInstance()
 
@@ -551,6 +571,19 @@ const setVideoSource = async (): Promise<void> => {
       }
 
       if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
+        const canFallbackToRaw = Boolean(
+          media.value?.rawVideoUrl &&
+            media.value.rawVideoUrl !== sourceUrl &&
+            !usingRawFallback.value,
+        )
+
+        if (canFallbackToRaw) {
+          usingRawFallback.value = true
+          playerError.value = ''
+          void setVideoSource()
+          return
+        }
+
         playerError.value = 'HLS network error while loading the stream.'
       } else if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR) {
         playerError.value = 'HLS media error. Source may be corrupted or codec is unsupported.'
@@ -706,7 +739,7 @@ const mediaErrorToMessage = (code: number): string => {
 
 const tryAutoplay = async (): Promise<void> => {
   const video = videoRef.value
-  if (!video || !media.value?.videoUrl) {
+  if (!video || !activeVideoUrl.value) {
     return
   }
 
@@ -806,6 +839,7 @@ const loadPlayer = async (): Promise<void> => {
   lastSavedAt.value = 0
   lastSavedPosition.value = 0
   loadedKind.value = props.kind
+  usingRawFallback.value = false
 
   const token = findAuthToken()
   activeToken.value = token
@@ -916,7 +950,7 @@ watch(
 )
 
 watch(
-  [() => media.value?.videoUrl, () => videoRef.value],
+  [() => activeVideoUrl.value, () => videoRef.value],
   () => {
     void setVideoSource()
   },
@@ -971,7 +1005,7 @@ onUnmounted(() => {
 
       <div class="player-video-block">
         <video
-          v-if="media?.videoUrl"
+          v-if="activeVideoUrl"
           ref="videoRef"
           class="player-video"
           controls
@@ -983,10 +1017,19 @@ onUnmounted(() => {
           @ended="onVideoEnded"
           @error="onVideoError"
         ></video>
-        <a v-if="media?.videoUrl" class="player-source-link" :href="media.videoUrl" target="_blank" rel="noopener">
+        <a v-if="activeVideoUrl" class="player-source-link" :href="activeVideoUrl" target="_blank" rel="noopener">
           Open raw {{ isHlsStream ? 'HLS' : 'video' }} URL
         </a>
-        <p v-else class="movie-muted-copy">
+        <a
+          v-if="media?.rawVideoUrl && activeVideoUrl !== media.rawVideoUrl"
+          class="player-source-link"
+          :href="media.rawVideoUrl"
+          target="_blank"
+          rel="noopener"
+        >
+          Open MP4 fallback URL
+        </a>
+        <p v-if="!activeVideoUrl" class="movie-muted-copy">
           {{ props.kind === 'movie' ? 'No video source available for this movie.' : 'No video source available for this episode.' }}
         </p>
       </div>
