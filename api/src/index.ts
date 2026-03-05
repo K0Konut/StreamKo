@@ -25,6 +25,7 @@ const AUTHENTICATED_ALLOWED_ACTIONS = [
   'api::person.person.findOne',
   'api::movie.movie.find',
   'api::movie.movie.findOne',
+  'api::movie.movie.importFromImdb',
   'api::serie.serie.find',
   'api::serie.serie.findOne',
   'api::season.season.find',
