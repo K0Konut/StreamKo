@@ -20,6 +20,10 @@
       "required": true,
       "unique": true
     },
+    "imdbId": {
+      "type": "string",
+      "unique": true
+    },
     "year": {
       "type": "integer",
       "required": true,

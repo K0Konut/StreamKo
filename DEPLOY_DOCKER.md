@@ -49,6 +49,7 @@ Dans `api/.env`, configure des secrets de prod (ne jamais commiter) :
 - `JWT_SECRET`
 - `ENCRYPTION_KEY`
 - `HLS_TRANSCODE_ENABLED=true` (optionnel, laisse active la conversion auto MP4 -> HLS)
+- `OMDB_API_KEY=<ta-cle>` (optionnel, active l'import metadata via IMDb/OMDb)
 
 La conversion HLS utilise `ffmpeg`/`ffprobe` (installes dans l'image `api/Dockerfile`).
 Attention: les premieres conversions peuvent consommer du CPU apres upload.

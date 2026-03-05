@@ -104,7 +104,7 @@ Créer une plateforme de streaming privée (toi + amis, comptes gérés par l'ad
 ### Content types
 - `genre`: `name` (unique)
 - `person`: `name`, `photo` (optionnel)
-- `movie`: `title`, `slug`, `year`, `synopsis`, `poster` (image), `video` (media mp4), `genres` (M2M), `cast` (M2M), `createdAt` / `publishedAt`
+- `movie`: `title`, `slug`, `imdbId` (string unique optionnel), `year`, `synopsis`, `poster` (image), `video` (media source), `genres` (M2M), `cast` (M2M), `createdAt` / `publishedAt`
 - `series`: `title`, `slug`, `year`, `synopsis`, `poster` (image), `genres` (M2M), `cast` (M2M), `seasons` (1-N)
 - `season`: `number`, `series` (N-1), `episodes` (1-N)
 - `episode`: `title`, `number`, `synopsis` (optionnel), `video` (media mp4), `season` (N-1)
@@ -117,6 +117,7 @@ Créer une plateforme de streaming privée (toi + amis, comptes gérés par l'ad
 ### Contenus
 - `GET /api/movies?populate=poster,genres,cast,video`
 - `GET /api/movies/:id?populate=...`
+- `POST /api/movies/import-imdb` (body: `imdbId`, optionnel `publish`, `videoId`)
 - `GET /api/series?populate=poster,genres,cast,seasons.episodes`
 - `GET /api/series/:id?populate=...`
 - `GET /api/episodes/:id?populate=video`
@@ -234,3 +235,8 @@ Cette checklist est bloquante avant d'annoncer que le backend est "stable".
 - Pas de migration technique non nécessaire tant que le flux Film end-to-end n'est pas validé.
 - Tout changement de schéma Strapi doit être accompagné d'une note de migration dans le PR/commit.
 - Ne pas faire évoluer la stratégie auth (JWT localStorage) avant validation complète du MVP.
+
+## Note de migration (2026-03-05)
+- Schema `movie` modifie: ajout du champ `imdbId` (string, unique, optionnel).
+- Nouveau endpoint backend: `POST /api/movies/import-imdb` pour creer/mettre a jour un film via `imdbId`.
+- Nouvelle variable env backend optionnelle: `OMDB_API_KEY`.
