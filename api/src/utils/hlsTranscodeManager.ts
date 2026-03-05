@@ -70,6 +70,7 @@ const HLS_ROOT_DIR = ['uploads', 'hls'];
 const MASTER_PLAYLIST_FILE = 'master.m3u8';
 const SEGMENT_DURATION_SECONDS = 6;
 const QUEUE_SCAN_BATCH_SIZE = 200;
+const QUEUE_RESCAN_INTERVAL_MS = 60 * 1000;
 const HLS_COMPAT_MARKER = '#STREAMKO-HLS-V2';
 
 type CommandResult = {
@@ -305,6 +306,7 @@ export const createHlsTranscodeManager = (
 } => {
   let enabled = false;
   let running = false;
+  let rescanTimer: ReturnType<typeof setInterval> | null = null;
   const queue: number[] = [];
   const queuedIds = new Set<number>();
   const processingIds = new Set<number>();
@@ -482,6 +484,34 @@ export const createHlsTranscodeManager = (
     });
   };
 
+  const startRescanLoop = (): void => {
+    if (rescanTimer) {
+      return;
+    }
+
+    rescanTimer = setInterval(() => {
+      if (!enabled) {
+        return;
+      }
+
+      void enqueueBootstrapFiles();
+      void runQueue();
+    }, QUEUE_RESCAN_INTERVAL_MS);
+
+    if (typeof rescanTimer.unref === 'function') {
+      rescanTimer.unref();
+    }
+  };
+
+  const stopRescanLoop = (): void => {
+    if (!rescanTimer) {
+      return;
+    }
+
+    clearInterval(rescanTimer);
+    rescanTimer = null;
+  };
+
   const init = async (): Promise<void> => {
     const featureFlag = process.env.HLS_TRANSCODE_ENABLED;
     if (featureFlag && featureFlag.toLowerCase() === 'false') {
@@ -505,11 +535,13 @@ export const createHlsTranscodeManager = (
     subscribeUploadLifecycle();
     await enqueueBootstrapFiles();
     void runQueue();
+    startRescanLoop();
     strapi.log.info('[hls] Automatic HLS conversion is enabled.');
   };
 
   const destroy = (): void => {
     enabled = false;
+    stopRescanLoop();
     queue.length = 0;
     queuedIds.clear();
     processingIds.clear();
