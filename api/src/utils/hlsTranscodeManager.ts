@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Core } from '@strapi/strapi';
@@ -70,6 +70,7 @@ const HLS_ROOT_DIR = ['uploads', 'hls'];
 const MASTER_PLAYLIST_FILE = 'master.m3u8';
 const SEGMENT_DURATION_SECONDS = 6;
 const QUEUE_SCAN_BATCH_SIZE = 200;
+const HLS_COMPAT_MARKER = '#STREAMKO-HLS-V2';
 
 type CommandResult = {
   stdout: string;
@@ -241,6 +242,8 @@ const createVariantPlaylist = async (
     'veryfast',
     '-profile:v',
     'main',
+    '-pix_fmt',
+    'yuv420p',
     '-crf',
     '20',
     '-g',
@@ -283,12 +286,10 @@ const writeMasterPlaylist = async (
   outputDir: string,
   renditions: VideoRenditionPreset[],
 ): Promise<void> => {
-  const lines: string[] = ['#EXTM3U', '#EXT-X-VERSION:3'];
+  const lines: string[] = ['#EXTM3U', '#EXT-X-VERSION:3', HLS_COMPAT_MARKER];
 
   for (const rendition of renditions) {
-    lines.push(
-      `#EXT-X-STREAM-INF:BANDWIDTH=${rendition.bandwidth},RESOLUTION=${rendition.width}x${rendition.height},CODECS="avc1.4d401f,mp4a.40.2"`,
-    );
+    lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${rendition.bandwidth}`);
     lines.push(`${rendition.label}.m3u8`);
   }
 
@@ -376,7 +377,12 @@ export const createHlsTranscodeManager = (
 
     try {
       await access(masterPlaylistPath);
-      return;
+      const existingMaster = await readFile(masterPlaylistPath, 'utf-8');
+      if (existingMaster.includes(HLS_COMPAT_MARKER)) {
+        return;
+      }
+
+      strapi.log.info(`[hls] Regenerating legacy playlist for upload ${file.id}.`);
     } catch {
       // Playlist does not exist yet, continue.
     }
