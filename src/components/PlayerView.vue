@@ -570,20 +570,20 @@ const setVideoSource = async (): Promise<void> => {
         return
       }
 
+      const canFallbackToRaw = Boolean(
+        media.value?.rawVideoUrl &&
+          media.value.rawVideoUrl !== sourceUrl &&
+          !usingRawFallback.value,
+      )
+
+      if (canFallbackToRaw) {
+        usingRawFallback.value = true
+        playerError.value = ''
+        void setVideoSource()
+        return
+      }
+
       if (data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR) {
-        const canFallbackToRaw = Boolean(
-          media.value?.rawVideoUrl &&
-            media.value.rawVideoUrl !== sourceUrl &&
-            !usingRawFallback.value,
-        )
-
-        if (canFallbackToRaw) {
-          usingRawFallback.value = true
-          playerError.value = ''
-          void setVideoSource()
-          return
-        }
-
         playerError.value = 'HLS network error while loading the stream.'
       } else if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR) {
         playerError.value = 'HLS media error. Source may be corrupted or codec is unsupported.'
@@ -791,6 +791,23 @@ const onVideoEnded = (): void => {
 }
 
 const onVideoError = (): void => {
+  const rawVideoUrl = media.value?.rawVideoUrl
+  const canFallbackToRaw = Boolean(
+    isHlsStream.value &&
+      rawVideoUrl &&
+      activeVideoUrl.value &&
+      rawVideoUrl !== activeVideoUrl.value &&
+      !usingRawFallback.value,
+  )
+
+  if (canFallbackToRaw) {
+    usingRawFallback.value = true
+    playerError.value = ''
+    autoplayError.value = ''
+    void setVideoSource()
+    return
+  }
+
   const code = videoRef.value?.error?.code ?? 0
   playerError.value = mediaErrorToMessage(code)
 }
