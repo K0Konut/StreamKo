@@ -714,6 +714,7 @@ a {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.8rem;
+  align-items: stretch;
 }
 
 .catalog-card {
@@ -722,15 +723,26 @@ a {
   padding: 0.85rem;
   background: var(--surface-card);
   box-shadow: 0 18px 44px rgba(11, 13, 18, 0.08);
+  display: flex;
+  flex-direction: column;
+  min-height: 276px;
 }
 
 .catalog-cover {
   border-radius: 14px;
   width: 100%;
   aspect-ratio: 16 / 10;
+  overflow: hidden;
   background:
     radial-gradient(circle at 18% 18%, var(--surface-soft), transparent 38%),
     linear-gradient(135deg, rgba(43, 107, 255, 0.86), rgba(0, 184, 219, 0.72));
+}
+
+.catalog-cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .catalog-card-head {
@@ -744,6 +756,13 @@ a {
 .catalog-card-head h4 {
   margin: 0;
   font-size: 1rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.5em;
 }
 
 .catalog-card-head span {
@@ -756,17 +775,15 @@ a {
   font-size: 0.84rem;
   color: var(--amber);
   font-weight: 600;
-}
-
-.catalog-synopsis {
-  margin: 0.38rem 0 0;
-  font-size: 0.86rem;
-  color: var(--ink-500);
-  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1.3em;
 }
 
 .catalog-card-actions {
-  margin-top: 0.72rem;
+  margin-top: auto;
+  padding-top: 0.72rem;
 }
 
 .catalog-open-btn {

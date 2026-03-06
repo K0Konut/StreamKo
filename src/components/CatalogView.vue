@@ -14,7 +14,7 @@ type CatalogItem = {
   title: string
   year: number | null
   genres: string[]
-  synopsis: string
+  posterUrl: string
   publishedAt: number
 }
 
@@ -244,6 +244,20 @@ const getEntityId = (entity: Record<string, unknown>): string => {
   return ''
 }
 
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:1337').replace(/\/+$/, '')
+
+const toAbsoluteMediaUrl = (url: string): string => {
+  if (!url) {
+    return ''
+  }
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+
+  return url.startsWith('/') ? `${API_ORIGIN}${url}` : `${API_ORIGIN}/${url}`
+}
+
 const toEntityArray = (response: unknown): Record<string, unknown>[] => {
   const payload = asRecord(response)
   const data = payload?.data
@@ -273,6 +287,9 @@ const toCatalogItem = (entity: Record<string, unknown>, kind: CatalogKind): Cata
     .map((genreEntity) => asString(getField(genreEntity, 'name')))
     .filter((genreName) => genreName.length > 0)
 
+  const posterEntity = getRelationEntities(entity, 'poster')[0]
+  const posterUrl = posterEntity ? toAbsoluteMediaUrl(asString(getField(posterEntity, 'url'))) : ''
+
   return {
     id: entityId,
     kind,
@@ -280,7 +297,7 @@ const toCatalogItem = (entity: Record<string, unknown>, kind: CatalogKind): Cata
     title,
     year: asNumber(getField(entity, 'year')),
     genres,
-    synopsis: asString(getField(entity, 'synopsis')),
+    posterUrl,
     publishedAt:
       parseTimestamp(getField(entity, 'publishedAt')) || parseTimestamp(getField(entity, 'createdAt')),
   }
@@ -429,7 +446,9 @@ onMounted(() => {
 
     <section class="catalog-grid">
       <article v-for="item in paginatedItems" :key="`${item.kind}-${item.id}`" class="catalog-card">
-        <div class="catalog-cover"></div>
+        <div class="catalog-cover">
+          <img v-if="item.posterUrl" :src="item.posterUrl" :alt="`Poster of ${item.title}`" loading="lazy" />
+        </div>
         <div class="catalog-card-head">
           <h4>{{ item.title }}</h4>
           <span>{{ item.year ?? 'N/A' }}</span>
@@ -437,7 +456,6 @@ onMounted(() => {
         <p class="catalog-genres">
           {{ item.kindLabel }}{{ item.genres.length > 0 ? ` • ${item.genres.join(' • ')}` : '' }}
         </p>
-        <p class="catalog-synopsis">{{ item.synopsis || 'No synopsis available yet.' }}</p>
         <div class="catalog-card-actions">
           <button type="button" class="catalog-open-btn" @click="openItemDetails(item)">
             {{ item.kind === 'movie' ? 'Open movie' : 'Open series' }}
