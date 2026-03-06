@@ -114,3 +114,27 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 docker compose -f docker-compose.prod.yml logs -f streamko-api
 docker compose -f docker-compose.prod.yml logs -f streamko-web
 ```
+
+## 9) Compat HLS (master.m3u8 auto)
+
+Si certains dossiers HLS contiennent des playlists variantes (ex: `720p.m3u8`, `480p.m3u8`)
+mais pas `master.m3u8`, tu peux activer une sync automatique.
+
+Le repo contient:
+
+- `deploy/scripts/streamko-master-sync.sh`
+
+Installation sur la VM:
+
+```bash
+cd /srv/docker/Projects/StreamKo
+chmod +x deploy/scripts/streamko-master-sync.sh
+sudo ln -sf /srv/docker/Projects/StreamKo/deploy/scripts/streamko-master-sync.sh /usr/local/bin/streamko-master-sync.sh
+sudo /usr/local/bin/streamko-master-sync.sh /mnt/media/streamko/uploads/hls
+```
+
+Cron (toutes les minutes):
+
+```bash
+( sudo crontab -l 2>/dev/null | grep -v 'streamko-master-sync.sh' ; echo '* * * * * /usr/local/bin/streamko-master-sync.sh /mnt/media/streamko/uploads/hls >/dev/null 2>&1' ) | sudo crontab -
+```
