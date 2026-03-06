@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Core } from '@strapi/strapi';
@@ -72,6 +72,7 @@ const SEGMENT_DURATION_SECONDS = 6;
 const QUEUE_SCAN_BATCH_SIZE = 200;
 const QUEUE_RESCAN_INTERVAL_MS = 60 * 1000;
 const HLS_COMPAT_MARKER = '#STREAMKO-HLS-V2';
+const STAGING_DIR_SUFFIX = '__staging__';
 
 type CommandResult = {
   stdout: string;
@@ -298,6 +299,58 @@ const writeMasterPlaylist = async (
   await writeFile(path.join(outputDir, MASTER_PLAYLIST_FILE), lines.join('\n'), 'utf-8');
 };
 
+const parseMasterVariants = (content: string): string[] => {
+  const variants: string[] = [];
+
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    if (line.toLowerCase().endsWith('.m3u8')) {
+      variants.push(line);
+    }
+  }
+
+  return variants;
+};
+
+const hasHealthyMaster = async (outputDir: string, masterContent: string): Promise<boolean> => {
+  if (!masterContent.includes(HLS_COMPAT_MARKER)) {
+    return false;
+  }
+
+  const variants = parseMasterVariants(masterContent);
+  if (variants.length === 0) {
+    return false;
+  }
+
+  for (const variant of variants) {
+    try {
+      await access(path.join(outputDir, variant));
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const createStagingOutputDir = async (
+  hlsRoot: string,
+  safeHash: string,
+  fileId: number,
+): Promise<string> => {
+  const stagingDir = path.join(
+    hlsRoot,
+    `${safeHash}.${STAGING_DIR_SUFFIX}.${fileId}.${Date.now().toString(36)}`,
+  );
+  await rm(stagingDir, { recursive: true, force: true });
+  await mkdir(stagingDir, { recursive: true });
+  return stagingDir;
+};
+
 export const createHlsTranscodeManager = (
   strapi: Core.Strapi,
 ): {
@@ -377,26 +430,37 @@ export const createHlsTranscodeManager = (
     const outputDir = path.join(hlsRoot, safeHash);
     const masterPlaylistPath = path.join(outputDir, MASTER_PLAYLIST_FILE);
 
+    let shouldRegenerate = true;
     try {
       await access(masterPlaylistPath);
       const existingMaster = await readFile(masterPlaylistPath, 'utf-8');
-      if (existingMaster.includes(HLS_COMPAT_MARKER)) {
-        return;
+      const isHealthy = await hasHealthyMaster(outputDir, existingMaster);
+      if (isHealthy) {
+        shouldRegenerate = false;
+      } else if (existingMaster.includes(HLS_COMPAT_MARKER)) {
+        strapi.log.warn(
+          `[hls] Detected incomplete HLS output for upload ${file.id}. Regenerating playlist bundle.`,
+        );
+      } else {
+        strapi.log.info(`[hls] Regenerating legacy playlist for upload ${file.id}.`);
       }
-
-      strapi.log.info(`[hls] Regenerating legacy playlist for upload ${file.id}.`);
     } catch {
       // Playlist does not exist yet, continue.
     }
 
+    if (!shouldRegenerate) {
+      return;
+    }
+
     await mkdir(hlsRoot, { recursive: true });
-    await rm(outputDir, { recursive: true, force: true });
-    await mkdir(outputDir, { recursive: true });
+    const stagingDir = await createStagingOutputDir(hlsRoot, safeHash, file.id);
+    let promoted = false;
 
     const resolution = await getVideoResolution(sourcePath);
     const renditions = buildRenditions(resolution?.height ?? null);
     if (renditions.length === 0) {
       strapi.log.warn(`[hls] No renditions selected for upload ${file.id}.`);
+      await rm(stagingDir, { recursive: true, force: true });
       return;
     }
 
@@ -404,11 +468,21 @@ export const createHlsTranscodeManager = (
       `[hls] Transcoding upload ${file.id} (${file.name || file.url}) to ${renditions.length} HLS rendition(s).`,
     );
 
-    for (const rendition of renditions) {
-      await createVariantPlaylist(sourcePath, outputDir, rendition);
+    try {
+      for (const rendition of renditions) {
+        await createVariantPlaylist(sourcePath, stagingDir, rendition);
+      }
+
+      await writeMasterPlaylist(stagingDir, renditions);
+      await rm(outputDir, { recursive: true, force: true });
+      await rename(stagingDir, outputDir);
+      promoted = true;
+    } finally {
+      if (!promoted) {
+        await rm(stagingDir, { recursive: true, force: true });
+      }
     }
 
-    await writeMasterPlaylist(outputDir, renditions);
     strapi.log.info(`[hls] Ready: /uploads/hls/${safeHash}/${MASTER_PLAYLIST_FILE}`);
   };
 
@@ -431,7 +505,16 @@ export const createHlsTranscodeManager = (
           await processUploadFile(fileId);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          strapi.log.error(`[hls] Transcode failed for upload ${fileId}: ${message}`);
+          let fileLabel = String(fileId);
+          try {
+            const file = await getUploadFileById(fileId);
+            if (file) {
+              fileLabel = `${file.id} (${file.hash || file.name || file.url || 'unknown'})`;
+            }
+          } catch {
+            // Keep fallback label when metadata lookup fails.
+          }
+          strapi.log.error(`[hls] Transcode failed for upload ${fileLabel}: ${message}`);
         } finally {
           processingIds.delete(fileId);
         }
