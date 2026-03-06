@@ -317,10 +317,6 @@ const parseMasterVariants = (content: string): string[] => {
 };
 
 const hasHealthyMaster = async (outputDir: string, masterContent: string): Promise<boolean> => {
-  if (!masterContent.includes(HLS_COMPAT_MARKER)) {
-    return false;
-  }
-
   const variants = parseMasterVariants(masterContent);
   if (variants.length === 0) {
     return false;
