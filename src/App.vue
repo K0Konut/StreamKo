@@ -17,6 +17,7 @@ type Release = {
   kind: 'Movie' | 'Series'
   meta: string
   label: string
+  posterUrl: string
   publishedAt: number
 }
 
@@ -679,6 +680,20 @@ const asNumber = (value: unknown): number | null => {
   return null
 }
 
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:1337').replace(/\/+$/, '')
+
+const toAbsoluteMediaUrl = (url: string): string => {
+  if (!url) {
+    return ''
+  }
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+
+  return url.startsWith('/') ? `${API_ORIGIN}${url}` : `${API_ORIGIN}/${url}`
+}
+
 const parseTimestamp = (value: unknown): number => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
@@ -779,6 +794,8 @@ const buildRelease = (entity: Record<string, unknown>, kind: 'Movie' | 'Series')
 
   const year = asNumber(getField(entity, 'year'))
   const seasonCount = getRelationEntities(entity, 'seasons').length
+  const posterEntity = getRelationEntities(entity, 'poster')[0]
+  const posterUrl = posterEntity ? toAbsoluteMediaUrl(asString(getField(posterEntity, 'url'))) : ''
 
   return {
     id: mediaId,
@@ -787,6 +804,7 @@ const buildRelease = (entity: Record<string, unknown>, kind: 'Movie' | 'Series')
     kind,
     meta: kind === 'Movie' ? 'Movie' : seasonCount > 0 ? `S${seasonCount}` : 'Series',
     label: topLabelFor(kind, publishedAt),
+    posterUrl,
     publishedAt,
   }
 }
@@ -1246,7 +1264,9 @@ onUnmounted(() => {
           <span>{{ nowPlaying?.label ?? 'Preview' }}</span>
         </div>
         <div class="panel-card">
-          <div class="poster"></div>
+          <div class="poster">
+            <img v-if="nowPlaying?.posterUrl" :src="nowPlaying.posterUrl" :alt="`Poster of ${nowPlaying.title}`" loading="lazy" />
+          </div>
           <div>
             <p class="panel-title">{{ nowPlaying?.title ?? 'No media selected' }}</p>
             <p class="panel-sub">
@@ -1318,7 +1338,9 @@ onUnmounted(() => {
             class="media-card"
             :style="{ '--delay': `${idx * 80}ms` }"
           >
-            <div class="media-cover"></div>
+            <div class="media-cover">
+              <img v-if="item.posterUrl" :src="item.posterUrl" :alt="`Poster of ${item.title}`" loading="lazy" />
+            </div>
             <div class="media-meta">
               <span>{{ item.kind }}</span>
               <span>{{ item.meta }}</span>
